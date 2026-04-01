@@ -13,6 +13,7 @@ from .s2anet import S2ANet
 from .single_stage import RotatedSingleStageDetector
 from .two_stage import RotatedTwoStageDetector
 from .trisource_H1stage_R2stage_detector import TriSourceDetector
+from .shipwake_dual_detector import ShipWakeDualDetector
 from .trisource_H2stage_R2stage_detector import TriSourceTwoTwoDetector
 from .trisource_H2stage_R1stage_detector import TriSourceTwoOneDetector
 from .trisource_H1stage_R1stage_detector import TriSourceOneOneDetector
@@ -20,5 +21,7 @@ __all__ = [
     'RotatedRetinaNet', 'RotatedFasterRCNN', 'OrientedRCNN', 'RoITransformer',
     'GlidingVertex', 'ReDet', 'R3Det', 'S2ANet', 'RotatedRepPoints',
     'RotatedBaseDetector', 'RotatedTwoStageDetector',
-    'RotatedSingleStageDetector', 'RotatedFCOS','TriSourceDetector', 'TriSourceTwoTwoDetector','TriSourceTwoOneDetector','TriSourceOneOneDetector'
+    'RotatedSingleStageDetector', 'RotatedFCOS','TriSourceDetector', 
+    'TriSourceTwoTwoDetector','TriSourceTwoOneDetector','TriSourceOneOneDetector',
+    'ShipWakeDualDetector'
 ]
