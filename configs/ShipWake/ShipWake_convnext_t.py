@@ -1,228 +1,248 @@
-_base_ = [
-    '../_base_/schedules/schedule_1x.py',
-    '../_base_/default_runtime.py'
-]
+# Copyright (c) OpenMMLab. All rights reserved.
+"""
+ShipWake Detection - Full Training Configuration for SWIM Dataset
 
-# Model configuration for ship-wake detection
+This configuration implements the full ShipWake detection model with:
+- ConvNeXt MoE backbone with WakeResidual and GeometricMAMG
+- Dual detection heads: WakeOBBHead + ShipPointHead (single-stage)
+- DSO (Dynamic Submodule Optimization) for differentiated learning rates
+- SWIM Dataset with dual annotations
+"""
+
+# Model configuration
 angle_version = 'le90'
-num_classes = 2  # ship and wake
+num_classes = 2  # wake, ship
 
 model = dict(
     type='ShipWakeDualDetector',
     backbone=dict(
         type='ConvNeXt_moe_wake',
         arch='tiny',
+        in_channels=3,
+        stem_patch_size=4,
         drop_path_rate=0.1,
+        layer_scale_init_value=1e-6,
+        out_indices=[0, 1, 2, 3],
         # MoE configuration
         MoE_Block_inds=[[], [], [0, 2, 4], [0, 2]],
-        num_experts=4,  # ship, wake, background, mixed
+        noisy_gating=True,
+        num_experts=4,  # wake, ship, background, mixed
         top_k=2,
         gate='cosine',
-        # Geometric MAMG
+        # Wake-specific enhancements
         use_geometric_mamg=True,
+        use_wake_residual=True,
         mamg_alpha=0.2,
         mamg_beta=0.5,
-        # Wake Residual
-        use_wake_residual=True,
         residual_lambda=0.1,
-        # Pretrained weights
         init_cfg=dict(
             type='Pretrained',
-            checkpoint='data/pretrained/convnext-tiny.pth'
-        )
-    ),
+            checkpoint='open-mmlab://convnext/tiny')),
+    
     neck=dict(
         type='FPN',
         in_channels=[96, 192, 384, 768],
         out_channels=256,
-        num_outs=5
-    ),
-    rpn_head=dict(
-        type='OrientedRPNHead',
+        num_outs=5),
+    
+    # Dual detection head
+    bbox_head=dict(
+        type='ShipWakeDualHead',
         in_channels=256,
-        feat_channels=256,
-        version=angle_version,
-        anchor_generator=dict(
-            type='AnchorGenerator',
-            scales=[8],
-            ratios=[0.5, 1.0, 2.0],
-            strides=[4, 8, 16, 32, 64]),
-        bbox_coder=dict(
-            type='MidpointOffsetCoder',
-            angle_range=angle_version,
-            target_means=[0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            target_stds=[1.0, 1.0, 1.0, 1.0, 0.5, 0.5]),
-        loss_cls=dict(
-            type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0),
-        loss_bbox=dict(
-            type='SmoothL1Loss', beta=0.1111111111111111, loss_weight=1.0)),
-    # Ship detection head
-    ship_roi_head=dict(
-        type='OrientedStandardRoIHead',
-        bbox_roi_extractor=dict(
-            type='RotatedSingleRoIExtractor',
-            roi_layer=dict(
-                type='RoIAlignRotated',
-                out_size=7,
-                sample_num=2,
-                clockwise=True),
-            out_channels=256,
-            featmap_strides=[4, 8, 16, 32]),
-        bbox_head=dict(
-            type='ShipWakeHead',
-            num_classes=1,  # Single class for ship
+        wake_head_cfg=dict(
+            type='WakeOBBHead',
+            num_classes=1,
             in_channels=256,
-            fc_out_channels=1024,
-            roi_feat_size=7,
-            use_direction=True,
-            bbox_coder=dict(
-                type='DeltaXYWHAOBBoxCoder',
-                angle_range=angle_version,
-                norm_factor=None,
-                edge_swap=True,
-                proj_xy=True,
-                target_means=(.0, .0, .0, .0, .0),
-                target_stds=(0.1, 0.1, 0.2, 0.2, 0.1)),
-            reg_class_agnostic=True,
+            feat_channels=256,
+            stacked_convs=4,
+            strides=[8, 16, 32, 64, 128],
             loss_cls=dict(
-                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0))),
-    # Wake detection head
-    wake_roi_head=dict(
-        type='OrientedStandardRoIHead',
-        bbox_roi_extractor=dict(
-            type='RotatedSingleRoIExtractor',
-            roi_layer=dict(
-                type='RoIAlignRotated',
-                out_size=7,
-                sample_num=2,
-                clockwise=True),
-            out_channels=256,
-            featmap_strides=[4, 8, 16, 32]),
-        bbox_head=dict(
-            type='ShipWakeHead',
-            num_classes=1,  # Single class for wake
+                type='FocalLoss',
+                use_sigmoid=True,
+                gamma=2.0,
+                alpha=0.25,
+                loss_weight=1.0),
+            loss_bbox=dict(
+                type='SmoothL1Loss', beta=1.0, loss_weight=1.0)),
+        ship_head_cfg=dict(
+            type='ShipPointHead',
             in_channels=256,
-            fc_out_channels=1024,
-            roi_feat_size=7,
-            use_direction=True,
-            bbox_coder=dict(
-                type='DeltaXYWHAOBBoxCoder',
-                angle_range=angle_version,
-                norm_factor=None,
-                edge_swap=True,
-                proj_xy=True,
-                target_means=(.0, .0, .0, .0, .0),
-                target_stds=(0.1, 0.1, 0.2, 0.2, 0.1)),
-            reg_class_agnostic=True,
-            loss_cls=dict(
-                type='CrossEntropyLoss', use_sigmoid=False, loss_weight=1.0),
-            loss_bbox=dict(type='SmoothL1Loss', beta=1.0, loss_weight=1.0))),
-    # Training config
+            feat_channels=256,
+            stacked_convs=4,
+            num_anchors=1,
+            strides=[8, 16, 32, 64, 128],
+            center_sampling_radius=1.5,
+            loss_center=dict(
+                type='SmoothL1Loss', beta=1.0, loss_weight=1.0),
+            loss_direction=dict(
+                type='CosineSimilarityLoss', loss_weight=0.5),
+            loss_conf=dict(
+                type='FocalLoss',
+                use_sigmoid=True,
+                gamma=2.0,
+                alpha=0.25,
+                loss_weight=1.0))),
+    
+    # Training configuration
     train_cfg=dict(
-        rpn=dict(
-            assigner=dict(
-                type='MaxIoUAssigner',
-                pos_iou_thr=0.7,
-                neg_iou_thr=0.3,
-                min_pos_iou=0.3,
-                match_low_quality=True,
-                gpu_assign_thr=600,
-                ignore_iof_thr=-1),
-            sampler=dict(
-                type='RandomSampler',
-                num=256,
-                pos_fraction=0.5,
-                neg_pos_ub=-1,
-                add_gt_as_proposals=False),
-            allowed_border=0,
-            pos_weight=-1,
-            debug=False),
-        rpn_proposal=dict(
-            nms_pre=2000,
-            max_per_img=2000,
-            nms=dict(type='nms', iou_threshold=0.8),
-            min_bbox_size=0),
-        rcnn=dict(
-            assigner=dict(
-                type='MaxIoUAssigner',
-                pos_iou_thr=0.5,
-                neg_iou_thr=0.5,
-                min_pos_iou=0.5,
-                match_low_quality=False,
-                gpu_assign_thr=600,
-                iou_calculator=dict(type='RBboxOverlaps2D'),
-                ignore_iof_thr=-1),
-            sampler=dict(
-                type='RRandomSampler',
-                num=512,
-                pos_fraction=0.25,
-                neg_pos_ub=-1,
-                add_gt_as_proposals=True),
-            pos_weight=-1,
-            debug=False)),
-    # Testing config
+        assigner=dict(
+            type='MaxIoUAssigner',
+            pos_iou_thr=0.5,
+            neg_iou_thr=0.5,
+            min_pos_iou=0.5,
+            match_low_quality=False,
+            gpu_assign_thr=600,
+            iou_calculator=dict(type='RBboxOverlaps2D'),
+            ignore_iof_thr=-1),
+        sampler=dict(
+            type='RRandomSampler',
+            num=512,
+            pos_fraction=0.25,
+            neg_pos_ub=-1,
+            add_gt_as_proposals=True),
+        pos_weight=-1,
+        debug=False,
+        # Test config
+        nms_pre=2000,
+        min_bbox_size=0,
+        score_thr=0.05,
+        nms=dict(iou_thr=0.1),
+        max_per_img=2000),
+    
     test_cfg=dict(
-        rpn=dict(
-            nms_pre=2000,
-            max_per_img=2000,
-            nms=dict(type='nms', iou_threshold=0.8),
-            min_bbox_size=0),
-        rcnn=dict(
-            nms_pre=2000,
-            min_bbox_size=0,
-            score_thr=0.05,
-            nms=dict(iou_thr=0.1),
-            max_per_img=2000))
-)
+        nms_pre=2000,
+        min_bbox_size=0,
+        score_thr=0.05,
+        nms=dict(iou_thr=0.1),
+        max_per_img=2000))
 
-# Optimizer
+# Optimizer with DSO support
 optimizer = dict(
-    _delete_=True,
     type='AdamW',
     lr=0.0001,
     betas=(0.9, 0.999),
     weight_decay=0.05,
     paramwise_cfg=dict(
         custom_keys={
-            'backbone': dict(lr_mult=1.0),
+            # Backbone and shared components
+            'backbone': dict(lr_mult=0.1),
             'neck': dict(lr_mult=1.0),
-            'rpn_head': dict(lr_mult=1.0),
-            'ship_roi_head': dict(lr_mult=1.0),
-            'wake_roi_head': dict(lr_mult=1.0),
-        })
+            # Detection heads (DSO will adjust these)
+            'bbox_head.wake_head': dict(lr_mult=1.0),
+            'bbox_head.ship_head': dict(lr_mult=1.0),
+        }))
+
+# SWIM Dataset configuration
+dataset_type = 'SWIMDataset'
+data_root = 'data/SWIM_Dataset_1.0.0/'
+
+# Image normalization
+img_norm_cfg = dict(
+    mean=[123.675, 116.28, 103.53], 
+    std=[58.395, 57.12, 57.375], 
+    to_rgb=True
 )
+
+# Training pipeline for SWIM dataset
+train_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadSWIMAnnotations', with_wake_bbox=True, with_ship_point=True),
+    dict(type='RResize', img_scale=(800, 800)),
+    dict(
+        type='RRandomFlip',
+        flip_ratio=[0.25, 0.25, 0.25],
+        direction=['horizontal', 'vertical', 'diagonal'],
+        version=angle_version),
+    dict(
+        type='PolyRandomRotate',
+        rotate_ratio=0.5,
+        angles_range=180,
+        auto_bound=False,
+        version=angle_version),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='Pad', size=(800, 800)),
+    dict(type='SWIMFormatBundle'),
+    dict(type='CollectSWIM', keys=['img', 'gt_wake_bboxes', 'gt_wake_labels',
+                                    'gt_ship_points', 'gt_ship_directions', 
+                                    'gt_ship_labels']),
+]
+
+# Testing pipeline
+test_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadSWIMAnnotations', with_wake_bbox=True, with_ship_point=True),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale=(800, 800),
+        flip=False,
+        transforms=[
+            dict(type='RResize'),
+            dict(type='Normalize', **img_norm_cfg),
+            dict(type='Pad', size_divisor=32),
+            dict(type='SWIMFormatBundle'),
+            dict(type='CollectSWIM', keys=['img']),
+        ])
+]
+
+# Data configuration
+data = dict(
+    samples_per_gpu=2,
+    workers_per_gpu=2,
+    train=dict(
+        type=dataset_type,
+        ann_file=data_root + 'ImageSets/Main/train.txt',
+        img_prefix=data_root,
+        wake_ann_dir='Annotations',
+        ship_ann_dir='Landmarks',
+        img_dir='PNGImages',
+        pipeline=train_pipeline,
+        version=angle_version),
+    val=dict(
+        type=dataset_type,
+        ann_file=data_root + 'ImageSets/Main/val.txt',
+        img_prefix=data_root,
+        wake_ann_dir='Annotations',
+        ship_ann_dir='Landmarks',
+        img_dir='PNGImages',
+        pipeline=test_pipeline,
+        version=angle_version),
+    test=dict(
+        type=dataset_type,
+        ann_file=data_root + 'ImageSets/Main/test.txt',
+        img_prefix=data_root,
+        wake_ann_dir='Annotations',
+        ship_ann_dir='Landmarks',
+        img_dir='PNGImages',
+        pipeline=test_pipeline,
+        version=angle_version))
 
 # Learning rate schedule with DSO
 lr_config = dict(
-    policy='dynamic',
+    policy='dynamic',  # Use DSO hook
     warmup='linear',
-    extra_args={
-        'T': 3,
-        'b': 0.4,
-        'ema': 0.001,
-        'backbone_policy': 'sigmoid_kl',
-        'head_policy': 'normal'
-    },
-    reweight_losses={
-        # RPN losses
-        'rpn_loss_cls': 'rpn_head',
-        'rpn_loss_bbox': 'rpn_head',
-        # Ship ROI losses
-        'ship_loss_cls': 'ship_roi_head',
-        'ship_loss_bbox': 'ship_roi_head',
-        'ship_acc': 'ship_roi_head',
-        # Wake ROI losses
-        'wake_loss_cls': 'wake_roi_head',
-        'wake_loss_bbox': 'wake_roi_head',
-        'wake_acc': 'wake_roi_head',
-    },
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    step=[8, 11]
-)
+    step=[8, 11],
+    # DSO specific arguments
+    extra_args={
+        'T': 3,                    # Temperature for softmax
+        'b': 0.4,                  # Bias for KL divergence
+        'ema': 0.001,              # EMA decay rate
+        'backbone_policy': 'sigmoid_kl',  # KL divergence based backbone LR
+        'head_policy': 'normal'    # Normal head policy
+    },
+    # Map loss names to modules for DSO
+    reweight_losses={
+        # Wake detection losses
+        'wake_loss_cls': 'bbox_head.wake_head',
+        'wake_loss_bbox': 'bbox_head.wake_head',
+        # Ship detection losses
+        'ship_loss_center': 'bbox_head.ship_head',
+        'ship_loss_direction': 'bbox_head.ship_head',
+        'ship_loss_conf': 'bbox_head.ship_head'
+    })
 
-# Runtime settings
+# Training schedule
 runner = dict(type='EpochBasedRunner', max_epochs=12)
 checkpoint_config = dict(interval=1)
 log_config = dict(
@@ -232,8 +252,22 @@ log_config = dict(
         dict(type='TensorboardLoggerHook')
     ])
 
-# Dataset configuration (placeholder - needs to be adapted for SwimShip dataset)
-dataset_type = 'ShipWakeDataset'  # Custom dataset needed
-data_root = 'data/SwimShip/'
+# Evaluation
+evaluation = dict(interval=1, metric='mAP')
 
-# ... (rest of data configuration similar to SOI_Det but for single dataset)
+# Misc
+dist_params = dict(backend='nccl')
+log_level = 'INFO' # 'WARNING' if needed?
+load_from = None
+resume_from = None
+workflow = [('train', 1)]
+work_dir = './work_dirs/shipwake_convnext_t'
+
+# Visualization settings (optional, for debugging)
+vis_config = dict(
+    enabled=False,  # Enable during debugging
+    save_dir='./vis_results',
+    save_interval=100,
+    save_feature_maps=True,
+    save_masks=True,
+    save_moe_gates=True)

@@ -13,6 +13,10 @@ from .sardet_hbb import SARDet_hbb
 from .sardet_hbb_trisource import SARDet_hbb_trisource
 from .sardet_dota_ifred import SARDetDotaIFRedDataset
 from .dronevehicle import DroneVehicle_Dataset
+from .swim import SWIMDataset  # noqa: F401
 
-__all__ = ['SARDataset', 'DOTADataset', 'build_dataset', 'HRSCDataset', 'FairDataset', 'DOTADataset15', 'MultiSourceSampler', 'build_dataloader',
-           'Dota_Dataset', 'SARDetDataset', 'SARDet_hbb', 'DroneVehicle_Dataset', 'SARDetDotaIFRedDataset', 'SARDet_hbb_trisource']
+__all__ = ['SARDataset', 'DOTADataset', 'build_dataset', 'HRSCDataset', 'FairDataset', 
+           'DOTADataset15', 'MultiSourceSampler', 'build_dataloader',
+           'Dota_Dataset', 'SARDetDataset', 'SARDet_hbb', 'DroneVehicle_Dataset', 
+           'SARDetDotaIFRedDataset', 'SARDet_hbb_trisource',
+           'SWIMDataset']

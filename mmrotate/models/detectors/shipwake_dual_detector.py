@@ -2,13 +2,20 @@
 """
 ShipWake Dual Detector
 
-Two-stage detector with dual detection heads for ship and wake targets.
+Single-stage detector with dual detection heads for ship and wake targets.
 Integrates with GeometricMAMG backbone and DSO optimization.
+
+Architecture:
+    1. Backbone with GeometricMAMG and WakeResidual
+    2. FPN Neck
+    3. Dual Detection Heads:
+       - WakeOBBHead: Oriented bounding box detection for wake
+       - ShipPointHead: Point regression + direction for ship
 """
 
 import warnings
 import torch
-from mmdet.core import bbox2result
+from mmcv.runner import BaseModule
 
 from ..builder import ROTATED_DETECTORS, build_backbone, build_head, build_neck
 from .base import RotatedBaseDetector
@@ -21,15 +28,14 @@ class ShipWakeDualDetector(RotatedBaseDetector):
     Architecture:
         1. Backbone with GeometricMAMG and WakeResidual
         2. FPN Neck
-        3. RPN for proposal generation
-        4. Dual ROI Heads (ship and wake)
+        3. Dual Detection Heads (single-stage):
+           - WakeOBBHead: OBB detection for wake targets
+           - ShipPointHead: Point + direction detection for ship targets
     
     Args:
         backbone: Backbone config (should use ConvNeXt_moe_wake)
         neck: FPN neck config
-        rpn_head: RPN head config
-        ship_roi_head: Ship detection ROI head
-        wake_roi_head: Wake detection ROI head
+        bbox_head: Dual head config containing wake_head and ship_head
         train_cfg: Training config
         test_cfg: Testing config
     """
@@ -37,9 +43,7 @@ class ShipWakeDualDetector(RotatedBaseDetector):
     def __init__(self,
                  backbone,
                  neck=None,
-                 rpn_head=None,
-                 ship_roi_head=None,
-                 wake_roi_head=None,
+                 bbox_head=None,
                  train_cfg=None,
                  test_cfg=None,
                  pretrained=None,
@@ -58,46 +62,27 @@ class ShipWakeDualDetector(RotatedBaseDetector):
         if neck is not None:
             self.neck = build_neck(neck)
         
-        # Build RPN head
-        if rpn_head is not None:
-            rpn_train_cfg = train_cfg.rpn if train_cfg is not None else None
-            rpn_head_ = rpn_head.copy()
-            rpn_head_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
-            self.rpn_head = build_head(rpn_head_)
-        
-        # Build ROI heads for ship and wake
-        if ship_roi_head is not None:
-            ship_rcnn_train_cfg = train_cfg.rcnn if train_cfg is not None else None
-            ship_roi_head.update(train_cfg=ship_rcnn_train_cfg)
-            ship_roi_head.update(test_cfg=test_cfg.rcnn)
-            self.ship_roi_head = build_head(ship_roi_head)
-            
-        if wake_roi_head is not None:
-            wake_rcnn_train_cfg = train_cfg.rcnn if train_cfg is not None else None
-            wake_roi_head.update(train_cfg=wake_rcnn_train_cfg)
-            wake_roi_head.update(test_cfg=test_cfg.rcnn)
-            self.wake_roi_head = build_head(wake_roi_head)
+        # Build dual detection head
+        if bbox_head is not None:
+            bbox_head.update(train_cfg=train_cfg)
+            bbox_head.update(test_cfg=test_cfg)
+            self.bbox_head = build_head(bbox_head)
         
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
         
         # For storing intermediate visualizations
         self.intermediate_features = None
-        
-    @property
-    def with_rpn(self):
-        """bool: whether the detector has RPN"""
-        return hasattr(self, 'rpn_head') and self.rpn_head is not None
     
     @property
-    def with_ship_roi(self):
-        """bool: whether the detector has ship RoI head"""
-        return hasattr(self, 'ship_roi_head') and self.ship_roi_head is not None
-        
+    def with_neck(self):
+        """bool: whether the detector has a neck"""
+        return hasattr(self, 'neck') and self.neck is not None
+    
     @property
-    def with_wake_roi(self):
-        """bool: whether the detector has wake RoI head"""
-        return hasattr(self, 'wake_roi_head') and self.wake_roi_head is not None
+    def with_bbox_head(self):
+        """bool: whether the detector has bbox head"""
+        return hasattr(self, 'bbox_head') and self.bbox_head is not None
     
     def extract_feat(self, img, return_intermediates=False):
         """Extract features from backbone.
@@ -140,45 +125,36 @@ class ShipWakeDualDetector(RotatedBaseDetector):
         outs = ()
         
         # Backbone
-        x, _ = self.extract_feat(img)
+        feats, _ = self.extract_feat(img)
         
-        # RPN
-        if self.with_rpn:
-            rpn_outs = self.rpn_head(x)
-            outs = outs + (rpn_outs,)
+        # Dual head
+        if self.with_bbox_head:
+            head_outs = self.bbox_head(feats)
+            outs = outs + (head_outs,)
         
-        proposals = torch.randn(1000, 5).to(img.device)
-        
-        # Ship RoI
-        if self.with_ship_roi:
-            ship_roi_outs = self.ship_roi_head.forward_dummy(x, proposals)
-            outs = outs + (ship_roi_outs,)
-            
-        # Wake RoI
-        if self.with_wake_roi:
-            wake_roi_outs = self.wake_roi_head.forward_dummy(x, proposals)
-            outs = outs + (wake_roi_outs,)
-            
         return outs
     
     def forward_train(self,
                       img,
                       img_metas,
-                      gt_bboxes,
-                      gt_labels,
+                      gt_wake_bboxes,
+                      gt_wake_labels,
+                      gt_ship_points,
+                      gt_ship_directions,
+                      gt_ship_labels,
                       gt_bboxes_ignore=None,
-                      gt_masks=None,
-                      proposals=None,
                       **kwargs):
         """Forward training.
         
         Args:
             img: Input images
             img_metas: Image metadata
-            gt_bboxes: Ground truth boxes (dict with 'ship' and 'wake' keys)
-            gt_labels: Ground truth labels (dict with 'ship' and 'wake' keys)
+            gt_wake_bboxes: Ground truth wake boxes (list of tensors)
+            gt_wake_labels: Ground truth wake labels (list of tensors)
+            gt_ship_points: Ground truth ship points (list of tensors)
+            gt_ship_directions: Ground truth ship directions (list of tensors)
+            gt_ship_labels: Ground truth ship labels (list of tensors)
             gt_bboxes_ignore: Ignored boxes
-            proposals: Pre-computed proposals
             
         Returns:
             losses: Dict of losses
@@ -196,49 +172,36 @@ class ShipWakeDualDetector(RotatedBaseDetector):
         if gate_loss is not None:
             losses['gate_loss'] = gate_loss
         
-        # RPN forward and loss
-        if self.with_rpn:
-            proposal_cfg = self.train_cfg.get('rpn_proposal', self.test_cfg.rpn)
-            rpn_losses, proposal_list = self.rpn_head.forward_train(
-                feats,
-                img_metas,
-                gt_bboxes,  # All boxes for RPN
-                gt_labels=None,
-                gt_bboxes_ignore=gt_bboxes_ignore,
-                proposal_cfg=proposal_cfg,
-                **kwargs
-            )
-            losses.update(rpn_losses)
-        else:
-            proposal_list = proposals
-        
-        # Ship RoI forward and loss
-        if self.with_ship_roi and len(gt_labels['ship']) > 0:
-            ship_roi_losses = self.ship_roi_head.forward_train(
-                feats, img_metas, proposal_list,
-                gt_bboxes['ship'], gt_labels['ship'],
-                gt_bboxes_ignore, gt_masks, **kwargs
-            )
-            losses.update({f'ship_{k}': v for k, v in ship_roi_losses.items()})
-        
-        # Wake RoI forward and loss
-        if self.with_wake_roi and len(gt_labels['wake']) > 0:
-            wake_roi_losses = self.wake_roi_head.forward_train(
-                feats, img_metas, proposal_list,
-                gt_bboxes['wake'], gt_labels['wake'],
-                gt_bboxes_ignore, gt_masks, **kwargs
-            )
-            losses.update({f'wake_{k}': v for k, v in wake_roi_losses.items()})
+        # Dual head forward and loss
+        if self.with_bbox_head:
+            # Organize GT data
+            gt_bboxes = {
+                'wake': gt_wake_bboxes,
+                'ship_points': gt_ship_points,
+                'ship_directions': gt_ship_directions
+            }
+            gt_labels = {
+                'wake': gt_wake_labels,
+                'ship': gt_ship_labels
+            }
+            
+            # Get predictions
+            predictions = self.bbox_head(feats)
+            
+            # Compute losses
+            head_losses = self.bbox_head.loss(
+                predictions, gt_bboxes, gt_labels, img_metas, gt_bboxes_ignore)
+            
+            losses.update(head_losses)
         
         return losses
     
-    def simple_test(self, img, img_metas, proposals=None, rescale=False):
+    def simple_test(self, img, img_metas, rescale=False):
         """Test without augmentation.
         
         Args:
             img: Input images
             img_metas: Image metadata
-            proposals: Pre-computed proposals
             rescale: Whether to rescale to original size
             
         Returns:
@@ -250,47 +213,14 @@ class ShipWakeDualDetector(RotatedBaseDetector):
         )
         self.intermediate_features = intermediates
         
-        # Get proposals from RPN
-        if proposals is None:
-            proposal_list = self.rpn_head.simple_test_rpn(feats, img_metas)
-        else:
-            proposal_list = proposals
+        # Get predictions from dual head
+        predictions = self.bbox_head(feats)
         
-        # Ship detection
-        ship_results = self.ship_roi_head.simple_test(
-            feats, proposal_list, img_metas, rescale=rescale
-        )
+        # Decode to bboxes
+        results = self.bbox_head.get_bboxes(
+            predictions, img_metas, cfg=self.test_cfg, rescale=rescale)
         
-        # Wake detection
-        wake_results = self.wake_roi_head.simple_test(
-            feats, proposal_list, img_metas, rescale=rescale
-        )
-        
-        # Combine results (label 0 for ship, label 1 for wake)
-        combined_results = []
-        for ship_res, wake_res in zip(ship_results, wake_results):
-            ship_bboxes = ship_res[0] if isinstance(ship_res, tuple) else ship_res
-            wake_bboxes = wake_res[0] if isinstance(wake_res, tuple) else wake_res
-            
-            # Create combined result with labels
-            if len(ship_bboxes) > 0:
-                ship_labels = torch.zeros(len(ship_bboxes), dtype=torch.long, 
-                                         device=ship_bboxes.device)
-            else:
-                ship_labels = torch.zeros(0, dtype=torch.long, device=ship_bboxes.device)
-                
-            if len(wake_bboxes) > 0:
-                wake_labels = torch.ones(len(wake_bboxes), dtype=torch.long,
-                                        device=wake_bboxes.device)
-            else:
-                wake_labels = torch.zeros(0, dtype=torch.long, device=wake_bboxes.device)
-            
-            all_bboxes = torch.cat([ship_bboxes, wake_bboxes], dim=0)
-            all_labels = torch.cat([ship_labels, wake_labels], dim=0)
-            
-            combined_results.append((all_bboxes, all_labels))
-        
-        return combined_results
+        return results
     
     def aug_test(self, imgs, img_metas, rescale=False):
         """Test with augmentations."""

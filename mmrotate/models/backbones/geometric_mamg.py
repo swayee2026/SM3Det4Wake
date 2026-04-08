@@ -102,7 +102,15 @@ class GeometricPropagator(nn.Module):
 
 
 class CrossGuidedFusion(nn.Module):
-    """Cross-guided fusion using geometric masks with direction alignment."""
+    """Cross-guided fusion using geometric masks with direction alignment.
+    
+    Implements enhanced directional attention as per paper specification:
+        directional_attention = Mask_ship_conf * (1 + cos(θ_ship - θ_wake))
+        F_wake_guided = F_input * (1 + α * directional_attention)
+    
+    This captures both spatial proximity (via confidence mask) and 
+    geometric consistency (via direction alignment).
+    """
     
     def __init__(self, channels, alpha=0.2, beta=0.5):
         super().__init__()
@@ -111,8 +119,31 @@ class CrossGuidedFusion(nn.Module):
         self.fusion_conv = nn.Conv2d(channels * 2, channels, 1)
         self.norm = nn.BatchNorm2d(channels)
         
+    def compute_direction_cosine(self, dir1, dir2):
+        """Compute raw cosine similarity between direction vectors.
+        
+        Args:
+            dir1, dir2: Direction tensors (B, 2, H, W), already normalized
+                       Format: [cos θ, sin θ] for each pixel
+            
+        Returns:
+            cos_sim: (B, 1, H, W) cosine similarity in [-1, 1]
+                    cos(θ1 - θ2) = cosθ1*cosθ2 + sinθ1*sinθ2
+        """
+        # Extract components
+        cos1, sin1 = dir1[:, 0:1], dir1[:, 1:2]
+        cos2, sin2 = dir2[:, 0:1], dir2[:, 1:2]
+        
+        # cos(θ1 - θ2) = cosθ1*cosθ2 + sinθ1*sinθ2
+        cos_diff = cos1 * cos2 + sin1 * sin2
+        
+        # Clamp to valid range to handle numerical errors
+        cos_diff = torch.clamp(cos_diff, -1.0, 1.0)
+        
+        return cos_diff
+    
     def compute_direction_alignment(self, dir1, dir2):
-        """Compute direction alignment score.
+        """Compute direction alignment score (legacy method).
         
         Args:
             dir1, dir2: Direction tensors (B, 2, H, W), already normalized
@@ -120,14 +151,39 @@ class CrossGuidedFusion(nn.Module):
         Returns:
             alignment: (B, 1, H, W) score in [0, 1]
         """
-        # Cosine similarity: dot product of unit vectors
-        cos_sim = (dir1 * dir2).sum(dim=1, keepdim=True)  # (B, 1, H, W)
+        cos_sim = self.compute_direction_cosine(dir1, dir2)
         # Map from [-1, 1] to [0, 1]
         alignment = (1 + cos_sim) / 2
         return alignment
     
+    def compute_directional_attention(self, mask_conf, dir1, dir2):
+        """Compute directional attention with geometric consistency.
+        
+        As per paper specification:
+            directional_attention = Mask_conf * (1 + cos(θ1 - θ2))
+        
+        The term (1 + cos(θ1 - θ2)) maps [-1, 1] to [0, 2]:
+            - When directions align (cos = 1): attention multiplier = 2
+            - When directions perpendicular (cos = 0): attention multiplier = 1  
+            - When directions opposite (cos = -1): attention multiplier = 0
+        
+        Args:
+            mask_conf: Confidence mask (B, 1, H, W)
+            dir1, dir2: Direction tensors (B, 2, H, W)
+            
+        Returns:
+            attention: (B, 1, H, W) directional attention
+        """
+        cos_diff = self.compute_direction_cosine(dir1, dir2)
+        
+        # (1 + cos_diff) maps [-1, 1] to [0, 2]
+        # Multiply by confidence to get spatial-weighted directional attention
+        directional_attention = mask_conf * (1 + cos_diff)
+        
+        return directional_attention, cos_diff
+    
     def forward(self, feat, ship_mask_dict, wake_mask_dict):
-        """Apply cross-guided fusion.
+        """Apply cross-guided fusion with directional attention.
         
         Args:
             feat: Input feature (B, C, H, W)
@@ -146,29 +202,44 @@ class CrossGuidedFusion(nn.Module):
         wake_conf = wake_mask_dict['conf']
         wake_dir = wake_mask_dict['direction']
         
-        # Compute direction alignment
-        dir_alignment = self.compute_direction_alignment(ship_dir, wake_dir)
+        # Compute directional attention
+        # Wake feature is guided by ship mask and ship-to-wake direction consistency
+        wake_directional_att, wake_cos_diff = self.compute_directional_attention(
+            ship_conf, ship_dir, wake_dir
+        )
         
-        # Cross-guidance:
-        # Wake feature is guided by ship mask + direction alignment
-        wake_guidance = ship_conf * (1 + self.beta * dir_alignment)
-        wake_feat = feat * (1 + self.alpha * wake_guidance)
+        # Ship feature is guided by wake mask and wake-to-ship direction consistency
+        ship_directional_att, ship_cos_diff = self.compute_directional_attention(
+            wake_conf, wake_dir, ship_dir
+        )
         
-        # Ship feature is guided by wake mask + direction alignment
-        ship_guidance = wake_conf * (1 + self.beta * dir_alignment)
-        ship_feat = feat * (1 + self.alpha * ship_guidance)
+        # Apply guidance with learnable strength
+        # Constrain alpha to [0, 1] using sigmoid
+        alpha_val = torch.sigmoid(self.alpha)
+        
+        # Wake pathway: guided by ship mask with directional awareness
+        wake_feat = feat * (1 + alpha_val * wake_directional_att)
+        
+        # Ship pathway: guided by wake mask with directional awareness
+        ship_feat = feat * (1 + alpha_val * ship_directional_att)
         
         # Concatenate and fuse
         fused = torch.cat([ship_feat, wake_feat], dim=1)  # (B, 2C, H, W)
         guided_feat = self.fusion_conv(fused)
         guided_feat = self.norm(guided_feat)
         
+        # Also compute traditional alignment for monitoring
+        dir_alignment = self.compute_direction_alignment(ship_dir, wake_dir)
+        
         debug_info = {
             'dir_alignment': dir_alignment,
-            'ship_guidance': ship_guidance,
-            'wake_guidance': wake_guidance,
+            'wake_directional_att': wake_directional_att,
+            'ship_directional_att': ship_directional_att,
+            'wake_cos_diff': wake_cos_diff,
+            'ship_cos_diff': ship_cos_diff,
             'ship_conf': ship_conf,
-            'wake_conf': wake_conf
+            'wake_conf': wake_conf,
+            'alpha_val': alpha_val
         }
         
         return guided_feat, debug_info
