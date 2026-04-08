@@ -1,227 +1,165 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 """
-Ship-Wake Dual Stream Detector
+ShipWake Dual Detector
 
-Two-stage detector with dual heads:
-- Ship detection head (for small, dense texture targets)
-- Wake detection head (for large, sparse linear targets)
-
-Integrates with DSO (Dynamic Submodule Optimization) for adaptive learning rate.
+Two-stage detector with dual detection heads for ship and wake targets.
+Integrates with GeometricMAMG backbone and DSO optimization.
 """
 
 import warnings
 import torch
 from mmdet.core import bbox2result
-from mmcv.runner import BaseModule
 
 from ..builder import ROTATED_DETECTORS, build_backbone, build_head, build_neck
 from .base import RotatedBaseDetector
 
 
-class EMA_meter:
-    """Exponential moving average meter for loss tracking."""
-    
-    def __init__(self, beta=0.01):
-        self.beta = beta
-        self.ema = None
-        self.steps = 0
-
-    def update(self, value):
-        if self.ema is None:
-            self.ema = value
-        else:
-            self.ema = (1 - self.beta) * self.ema + self.beta * value
-        self.steps += 1
-    
-    def get(self):
-        return self.ema
-
-
 @ROTATED_DETECTORS.register_module()
 class ShipWakeDualDetector(RotatedBaseDetector):
-    """Dual-stream detector for ship and wake detection.
+    """Dual detector for simultaneous ship and wake detection.
     
-    Uses a shared DualStream backbone with separate necks and heads
-    for ship and wake detection.
+    Architecture:
+        1. Backbone with GeometricMAMG and WakeResidual
+        2. FPN Neck
+        3. RPN for proposal generation
+        4. Dual ROI Heads (ship and wake)
     
     Args:
-        backbone (dict): Backbone config (ConvNeXt_DualStream).
-        ship_neck (dict): Neck config for ship detection.
-        wake_neck (dict): Neck config for wake detection.
-        ship_bbox_head (dict): BBox head config for ship detection.
-        wake_bbox_head (dict): BBox head config for wake detection.
-        ship_train_cfg (dict): Training config for ship head.
-        ship_test_cfg (dict): Testing config for ship head.
-        wake_train_cfg (dict): Training config for wake head.
-        wake_test_cfg (dict): Testing config for wake head.
-        multi_tasks_reweight (str): Multi-task reweighting strategy.
-            Options: None, 'uncertainty', 'dwa', 'dso'.
-        reweight_losses (dict): Mapping of loss names to network components.
-        train_cfg (dict): General training config.
-        test_cfg (dict): General testing config.
-        pretrained (str): Pretrained weights path.
-        init_cfg (dict): Initialization config.
+        backbone: Backbone config (should use ConvNeXt_moe_wake)
+        neck: FPN neck config
+        rpn_head: RPN head config
+        ship_roi_head: Ship detection ROI head
+        wake_roi_head: Wake detection ROI head
+        train_cfg: Training config
+        test_cfg: Testing config
     """
     
     def __init__(self,
                  backbone,
-                 ship_neck=None,
-                 wake_neck=None,
-                 ship_bbox_head=None,
-                 wake_bbox_head=None,
-                 ship_train_cfg=None,
-                 ship_test_cfg=None,
-                 wake_train_cfg=None,
-                 wake_test_cfg=None,
-                 multi_tasks_reweight=None,
-                 reweight_losses=None,
+                 neck=None,
+                 rpn_head=None,
+                 ship_roi_head=None,
+                 wake_roi_head=None,
                  train_cfg=None,
                  test_cfg=None,
                  pretrained=None,
                  init_cfg=None):
-        super(ShipWakeDualDetector, self).__init__(init_cfg)
+        super().__init__(init_cfg)
         
         if pretrained:
             warnings.warn('DeprecationWarning: pretrained is deprecated, '
                           'please use "init_cfg" instead')
             backbone.pretrained = pretrained
-        
-        # Build shared backbone
+            
+        # Build backbone (should include GeometricMAMG)
         self.backbone = build_backbone(backbone)
         
-        # Build separate necks
-        if ship_neck is not None:
-            self.ship_neck = build_neck(ship_neck)
-        if wake_neck is not None:
-            self.wake_neck = build_neck(wake_neck)
+        # Build neck
+        if neck is not None:
+            self.neck = build_neck(neck)
         
-        # Build detection heads
-        if ship_bbox_head is not None:
-            ship_bbox_head.update(train_cfg=ship_train_cfg)
-            ship_bbox_head.update(test_cfg=ship_test_cfg)
-            self.ship_bbox_head = build_head(ship_bbox_head)
+        # Build RPN head
+        if rpn_head is not None:
+            rpn_train_cfg = train_cfg.rpn if train_cfg is not None else None
+            rpn_head_ = rpn_head.copy()
+            rpn_head_.update(train_cfg=rpn_train_cfg, test_cfg=test_cfg.rpn)
+            self.rpn_head = build_head(rpn_head_)
         
-        if wake_bbox_head is not None:
-            wake_bbox_head.update(train_cfg=wake_train_cfg)
-            wake_bbox_head.update(test_cfg=wake_test_cfg)
-            self.wake_bbox_head = build_head(wake_bbox_head)
+        # Build ROI heads for ship and wake
+        if ship_roi_head is not None:
+            ship_rcnn_train_cfg = train_cfg.rcnn if train_cfg is not None else None
+            ship_roi_head.update(train_cfg=ship_rcnn_train_cfg)
+            ship_roi_head.update(test_cfg=test_cfg.rcnn)
+            self.ship_roi_head = build_head(ship_roi_head)
+            
+        if wake_roi_head is not None:
+            wake_rcnn_train_cfg = train_cfg.rcnn if train_cfg is not None else None
+            wake_roi_head.update(train_cfg=wake_rcnn_train_cfg)
+            wake_roi_head.update(test_cfg=test_cfg.rcnn)
+            self.wake_roi_head = build_head(wake_roi_head)
         
-        self.ship_train_cfg = ship_train_cfg
-        self.ship_test_cfg = ship_test_cfg
-        self.wake_train_cfg = wake_train_cfg
-        self.wake_test_cfg = wake_test_cfg
+        self.train_cfg = train_cfg
+        self.test_cfg = test_cfg
         
-        # Multi-task reweighting
-        self.multi_tasks_reweight = multi_tasks_reweight
-        self.reweight_losses = reweight_losses or {
-            'ship_loss_cls': 'ship_bbox_head',
-            'ship_loss_bbox': 'ship_bbox_head',
-            'wake_loss_cls': 'wake_bbox_head',
-            'wake_loss_bbox': 'wake_bbox_head'
-        }
+        # For storing intermediate visualizations
+        self.intermediate_features = None
         
-        if multi_tasks_reweight == 'uncertainty':
-            task_num = len(self.reweight_losses)
-            self.mtl_sigma = torch.nn.Parameter(torch.ones(task_num, requires_grad=True))
-        elif multi_tasks_reweight == 'dwa':
-            self.T = 3
-            self.history_loss = None
+    @property
+    def with_rpn(self):
+        """bool: whether the detector has RPN"""
+        return hasattr(self, 'rpn_head') and self.rpn_head is not None
     
     @property
-    def with_ship_neck(self):
-        return hasattr(self, 'ship_neck') and self.ship_neck is not None
-    
+    def with_ship_roi(self):
+        """bool: whether the detector has ship RoI head"""
+        return hasattr(self, 'ship_roi_head') and self.ship_roi_head is not None
+        
     @property
-    def with_wake_neck(self):
-        return hasattr(self, 'wake_neck') and self.wake_neck is not None
+    def with_wake_roi(self):
+        """bool: whether the detector has wake RoI head"""
+        return hasattr(self, 'wake_roi_head') and self.wake_roi_head is not None
     
-    @property
-    def with_ship_bbox_head(self):
-        return hasattr(self, 'ship_bbox_head') and self.ship_bbox_head is not None
-    
-    @property
-    def with_wake_bbox_head(self):
-        return hasattr(self, 'wake_bbox_head') and self.wake_bbox_head is not None
-    
-    def extract_feat(self, img, return_masks=False):
-        """Extract features using DualStream backbone.
+    def extract_feat(self, img, return_intermediates=False):
+        """Extract features from backbone.
         
         Args:
-            img (Tensor): Input images [B, 3, H, W].
-            return_masks (bool): Whether to return attention masks.
+            img: Input images
+            return_intermediates: Whether to return intermediate visualizations
             
         Returns:
-            If return_masks=False:
-                tuple: (ship_feats, wake_feats, gate_loss)
-            If return_masks=True:
-                tuple: (ship_feats, wake_feats, gate_loss, masks)
+            feats: Feature pyramid
+            intermediates: (optional) Dict with intermediate results
         """
-        # Forward through backbone
-        if return_masks:
-            feats, gate_loss, masks = self.backbone(img, return_masks=True)
+        # Check if backbone supports geometric MAMG
+        if hasattr(self.backbone, 'forward_with_intermediates'):
+            outs, intermediates = self.backbone.forward_with_intermediates(img)
         else:
-            output = self.backbone(img)
-            if isinstance(output, tuple) and len(output) == 2:
-                feats, gate_loss = output
-                masks = None
-            else:
-                feats = output
-                gate_loss = None
-                masks = None
-        
-        # Apply separate necks
-        if self.with_ship_neck:
-            ship_feats = self.ship_neck(feats)
-        else:
-            ship_feats = feats
+            outs = self.backbone(img)
+            intermediates = None
             
-        if self.with_wake_neck:
-            wake_feats = self.wake_neck(feats)
+        # Handle MoE gate loss
+        gate_loss = None
+        if isinstance(outs, tuple):
+            if len(outs) == 2:
+                outs, gate_loss = outs
+            elif len(outs) == 3:
+                outs, gate_loss, _ = outs
+                
+        # Apply neck
+        if self.with_neck:
+            feats = self.neck(outs)
         else:
-            wake_feats = feats
-        
-        if return_masks:
-            return ship_feats, wake_feats, gate_loss, masks
-        return ship_feats, wake_feats, gate_loss
+            feats = outs
+            
+        if return_intermediates:
+            return feats, intermediates, gate_loss
+        return feats, gate_loss
     
-    def _filter_by_class(self, gt_bboxes, gt_labels, target_class=0):
-        """Filter ground truth by class.
+    def forward_dummy(self, img):
+        """Used for computing network flops."""
+        outs = ()
         
-        Args:
-            gt_bboxes (list[Tensor]): Ground truth bboxes.
-            gt_labels (list[Tensor]): Ground truth labels.
-            target_class (int): Target class index.
-                            0 for ship, 1 for wake (assuming 2-class setup).
-                            
-        Returns:
-            tuple: (filtered_bboxes, filtered_labels)
-        """
-        filtered_bboxes = []
-        filtered_labels = []
+        # Backbone
+        x, _ = self.extract_feat(img)
         
-        for bboxes, labels in zip(gt_bboxes, gt_labels):
-            mask = labels == target_class
-            filtered_bboxes.append(bboxes[mask])
-            # Remap labels to 0 (single class per head)
-            filtered_labels.append(torch.zeros_like(labels[mask]))
+        # RPN
+        if self.with_rpn:
+            rpn_outs = self.rpn_head(x)
+            outs = outs + (rpn_outs,)
         
-        return filtered_bboxes, filtered_labels
-    
-    def _split_ship_wake_gt(self, gt_bboxes, gt_labels):
-        """Split GT into ship and wake categories.
+        proposals = torch.randn(1000, 5).to(img.device)
         
-        Args:
-            gt_bboxes (list[Tensor]): List of GT bboxes per image.
-            gt_labels (list[Tensor]): List of GT labels per image.
+        # Ship RoI
+        if self.with_ship_roi:
+            ship_roi_outs = self.ship_roi_head.forward_dummy(x, proposals)
+            outs = outs + (ship_roi_outs,)
             
-        Returns:
-            tuple: (ship_bboxes, ship_labels, wake_bboxes, wake_labels)
-        """
-        # Assuming label 0 = ship, label 1 = wake
-        ship_bboxes, ship_labels = self._filter_by_class(gt_bboxes, gt_labels, target_class=0)
-        wake_bboxes, wake_labels = self._filter_by_class(gt_bboxes, gt_labels, target_class=1)
-        
-        return ship_bboxes, ship_labels, wake_bboxes, wake_labels
+        # Wake RoI
+        if self.with_wake_roi:
+            wake_roi_outs = self.wake_roi_head.forward_dummy(x, proposals)
+            outs = outs + (wake_roi_outs,)
+            
+        return outs
     
     def forward_train(self,
                       img,
@@ -235,214 +173,166 @@ class ShipWakeDualDetector(RotatedBaseDetector):
         """Forward training.
         
         Args:
-            img (Tensor): Input images.
-            img_metas (list[dict]): Image metadata.
-            gt_bboxes (list[Tensor]): Ground truth bboxes.
-            gt_labels (list[Tensor]): Ground truth labels.
-            gt_bboxes_ignore (list[Tensor]): Ignored bboxes.
-            gt_masks (list[Tensor]): Ground truth masks.
-            proposals (list[Tensor]): Region proposals (for two-stage).
+            img: Input images
+            img_metas: Image metadata
+            gt_bboxes: Ground truth boxes (dict with 'ship' and 'wake' keys)
+            gt_labels: Ground truth labels (dict with 'ship' and 'wake' keys)
+            gt_bboxes_ignore: Ignored boxes
+            proposals: Pre-computed proposals
             
         Returns:
-            dict: Losses.
+            losses: Dict of losses
         """
+        losses = dict()
+        
         # Extract features
-        ship_feats, wake_feats, gate_loss = self.extract_feat(img)
+        feats, intermediates, gate_loss = self.extract_feat(
+            img, return_intermediates=True
+        )
         
-        # Split GT by class
-        ship_gt_bboxes, ship_gt_labels, wake_gt_bboxes, wake_gt_labels = \
-            self._split_ship_wake_gt(gt_bboxes, gt_labels)
+        # Store intermediates for visualization
+        self.intermediate_features = intermediates
         
-        losses = {}
-        
-        # Add gate loss if exists
         if gate_loss is not None:
             losses['gate_loss'] = gate_loss
         
-        # Ship detection losses
-        has_ship_gt = any(len(labels) > 0 for labels in ship_gt_labels)
-        if has_ship_gt and self.with_ship_bbox_head:
-            # Update img_metas with batch input shape
-            batch_input_shape = tuple(img[0].size()[-2:])
-            for img_meta in img_metas:
-                img_meta['batch_input_shape'] = batch_input_shape
-            
-            ship_losses = self.ship_bbox_head.forward_train(
-                ship_feats, img_metas, ship_gt_bboxes, 
-                ship_gt_labels, gt_bboxes_ignore
+        # RPN forward and loss
+        if self.with_rpn:
+            proposal_cfg = self.train_cfg.get('rpn_proposal', self.test_cfg.rpn)
+            rpn_losses, proposal_list = self.rpn_head.forward_train(
+                feats,
+                img_metas,
+                gt_bboxes,  # All boxes for RPN
+                gt_labels=None,
+                gt_bboxes_ignore=gt_bboxes_ignore,
+                proposal_cfg=proposal_cfg,
+                **kwargs
             )
-            losses.update({'ship_' + k: v for k, v in ship_losses.items()})
+            losses.update(rpn_losses)
+        else:
+            proposal_list = proposals
         
-        # Wake detection losses
-        has_wake_gt = any(len(labels) > 0 for labels in wake_gt_labels)
-        if has_wake_gt and self.with_wake_bbox_head:
-            batch_input_shape = tuple(img[0].size()[-2:])
-            for img_meta in img_metas:
-                img_meta['batch_input_shape'] = batch_input_shape
-            
-            wake_losses = self.wake_bbox_head.forward_train(
-                wake_feats, img_metas, wake_gt_bboxes,
-                wake_gt_labels, gt_bboxes_ignore
+        # Ship RoI forward and loss
+        if self.with_ship_roi and len(gt_labels['ship']) > 0:
+            ship_roi_losses = self.ship_roi_head.forward_train(
+                feats, img_metas, proposal_list,
+                gt_bboxes['ship'], gt_labels['ship'],
+                gt_bboxes_ignore, gt_masks, **kwargs
             )
-            losses.update({'wake_' + k: v for k, v in wake_losses.items()})
+            losses.update({f'ship_{k}': v for k, v in ship_roi_losses.items()})
         
-        # Apply multi-task reweighting (DSO/uncertainty/DWA)
-        if self.multi_tasks_reweight:
-            losses = self._apply_multi_task_reweight(losses)
+        # Wake RoI forward and loss
+        if self.with_wake_roi and len(gt_labels['wake']) > 0:
+            wake_roi_losses = self.wake_roi_head.forward_train(
+                feats, img_metas, proposal_list,
+                gt_bboxes['wake'], gt_labels['wake'],
+                gt_bboxes_ignore, gt_masks, **kwargs
+            )
+            losses.update({f'wake_{k}': v for k, v in wake_roi_losses.items()})
         
         return losses
     
-    def _apply_multi_task_reweight(self, losses):
-        """Apply multi-task loss reweighting.
+    def simple_test(self, img, img_metas, proposals=None, rescale=False):
+        """Test without augmentation.
         
         Args:
-            losses (dict): Raw losses.
+            img: Input images
+            img_metas: Image metadata
+            proposals: Pre-computed proposals
+            rescale: Whether to rescale to original size
             
         Returns:
-            dict: Reweighted losses.
+            list: Detection results
         """
-        # Extract task-specific losses
-        task_losses = {}
-        for k, v in losses.items():
-            if k in self.reweight_losses:
-                if isinstance(v, list):
-                    v = sum(v)
-                task_losses[k] = v
+        # Extract features
+        feats, intermediates, _ = self.extract_feat(
+            img, return_intermediates=True
+        )
+        self.intermediate_features = intermediates
         
-        if len(task_losses) == 0:
-            return losses
-        
-        if self.multi_tasks_reweight == 'uncertainty':
-            # Uncertainty weighting (Kendall et al.)
-            reweighted_losses = {}
-            for i, (k, loss) in enumerate(task_losses.items()):
-                precision = 0.5 / (self.mtl_sigma[i] ** 2)
-                reweighted_losses[k] = precision * loss + torch.log(1 + self.mtl_sigma[i] ** 2)
-            
-            # Keep other losses
-            for k, v in losses.items():
-                if k not in reweighted_losses:
-                    reweighted_losses[k] = v
-            
-            return reweighted_losses
-        
-        elif self.multi_tasks_reweight == 'dwa':
-            # Dynamic Weight Average (Liu et al.)
-            cur_losses = torch.stack(list(task_losses.values()))
-            
-            if self.history_loss is not None:
-                w_i = cur_losses / torch.tensor(self.history_loss).to(cur_losses.device)
-                batch_weight = len(task_losses) * torch.nn.functional.softmax(w_i / self.T, dim=-1)
-            else:
-                batch_weight = torch.ones(len(task_losses)).to(cur_losses.device)
-            
-            loss_sum = torch.mul(cur_losses, batch_weight).sum()
-            
-            reweighted_losses = {'reweighted_total_loss': loss_sum}
-            for k, v in losses.items():
-                if k not in task_losses:
-                    reweighted_losses[k] = v
-            
-            self.history_loss = cur_losses.detach().cpu().numpy()
-            return reweighted_losses
-        
-        # DSO (Dynamic Submodule Optimization) is handled by the hook
-        # Just return original losses
-        return losses
-    
-    def simple_test(self, img, img_metas, rescale=False):
-        """Simple test without augmentation.
-        
-        Args:
-            img (Tensor): Input images.
-            img_metas (list[dict]): Image metadata.
-            rescale (bool): Whether to rescale to original size.
-            
-        Returns:
-            list[list[np.ndarray]]: Detection results.
-                First list is for ship, second for wake.
-        """
-        ship_feats, wake_feats, _ = self.extract_feat(img)
-        
-        results = []
+        # Get proposals from RPN
+        if proposals is None:
+            proposal_list = self.rpn_head.simple_test_rpn(feats, img_metas)
+        else:
+            proposal_list = proposals
         
         # Ship detection
-        if self.with_ship_bbox_head:
-            ship_results = self.ship_bbox_head.simple_test(
-                ship_feats, img_metas, rescale=rescale
-            )
-            ship_bbox_results = [
-                bbox2result(det_bboxes, det_labels, self.ship_bbox_head.num_classes)
-                for det_bboxes, det_labels in ship_results
-            ]
-            results.append(ship_bbox_results)
+        ship_results = self.ship_roi_head.simple_test(
+            feats, proposal_list, img_metas, rescale=rescale
+        )
         
         # Wake detection
-        if self.with_wake_bbox_head:
-            wake_results = self.wake_bbox_head.simple_test(
-                wake_feats, img_metas, rescale=rescale
-            )
-            wake_bbox_results = [
-                bbox2result(det_bboxes, det_labels, self.wake_bbox_head.num_classes)
-                for det_bboxes, det_labels in wake_results
-            ]
-            results.append(wake_bbox_results)
+        wake_results = self.wake_roi_head.simple_test(
+            feats, proposal_list, img_metas, rescale=rescale
+        )
         
-        return results
+        # Combine results (label 0 for ship, label 1 for wake)
+        combined_results = []
+        for ship_res, wake_res in zip(ship_results, wake_results):
+            ship_bboxes = ship_res[0] if isinstance(ship_res, tuple) else ship_res
+            wake_bboxes = wake_res[0] if isinstance(wake_res, tuple) else wake_res
+            
+            # Create combined result with labels
+            if len(ship_bboxes) > 0:
+                ship_labels = torch.zeros(len(ship_bboxes), dtype=torch.long, 
+                                         device=ship_bboxes.device)
+            else:
+                ship_labels = torch.zeros(0, dtype=torch.long, device=ship_bboxes.device)
+                
+            if len(wake_bboxes) > 0:
+                wake_labels = torch.ones(len(wake_bboxes), dtype=torch.long,
+                                        device=wake_bboxes.device)
+            else:
+                wake_labels = torch.zeros(0, dtype=torch.long, device=wake_bboxes.device)
+            
+            all_bboxes = torch.cat([ship_bboxes, wake_bboxes], dim=0)
+            all_labels = torch.cat([ship_labels, wake_labels], dim=0)
+            
+            combined_results.append((all_bboxes, all_labels))
+        
+        return combined_results
     
     def aug_test(self, imgs, img_metas, rescale=False):
-        """Test with augmentations.
-        
-        Args:
-            imgs (list[Tensor]): Augmented images.
-            img_metas (list[list[dict]]): Image metadata for each aug.
-            rescale (bool): Whether to rescale.
-            
-        Returns:
-            list[list[np.ndarray]]: Detection results.
-        """
-        # TODO: Implement augmentation testing
-        # For now, fall back to simple test
-        return self.simple_test(imgs[0], img_metas[0], rescale=rescale)
+        """Test with augmentations."""
+        raise NotImplementedError
     
-    def forward_dummy(self, img):
-        """Used for computing network flops.
+    def extract_intermediate_visualizations(self, save_dir=None):
+        """Extract and save intermediate visualizations from last forward pass.
         
         Args:
-            img (Tensor): Input images.
+            save_dir: Directory to save visualizations
             
         Returns:
-            tuple: Dummy outputs.
+            dict: Visualization data
         """
-        outs = ()
-        
-        # Backbone
-        ship_feats, wake_feats, _ = self.extract_feat(img)
-        
-        # Ship head
-        if self.with_ship_bbox_head:
-            ship_outs = self.ship_bbox_head.forward(ship_feats)
-            outs = outs + (ship_outs,)
-        
-        # Wake head
-        if self.with_wake_bbox_head:
-            wake_outs = self.wake_bbox_head.forward(wake_feats)
-            outs = outs + (wake_outs,)
-        
-        return outs
-    
-    def forward(self, img, img_metas=None, return_loss=True, **kwargs):
-        """Main forward function.
-        
-        Args:
-            img (Tensor): Input images.
-            img_metas (list[dict]): Image metadata.
-            return_loss (bool): Whether to return losses.
+        if self.intermediate_features is None:
+            return None
             
-        Returns:
-            dict or list: Losses or detection results.
-        """
-        if return_loss:
-            return self.forward_train(img, img_metas, **kwargs)
-        else:
-            return self.simple_test(img, img_metas, **kwargs)
+        visualizations = {}
+        
+        # Visualize each stage
+        for i, inter in enumerate(self.intermediate_features):
+            stage_vis = {}
+            
+            # Feature map visualization
+            if 'feature' in inter:
+                stage_vis['feature'] = inter['feature']
+            
+            # Geometric mask visualization
+            if 'geo_mask' in inter:
+                stage_vis['geo_mask'] = inter['geo_mask']
+            
+            # Direction alignment
+            if 'dir_alignment' in inter:
+                stage_vis['dir_alignment'] = inter['dir_alignment']
+            
+            visualizations[f'stage_{i}'] = stage_vis
+            
+            # Save if directory provided
+            if save_dir is not None and hasattr(self.backbone, 'mamg_modules'):
+                if i < len(self.backbone.mamg_modules):
+                    self.backbone.mamg_modules[i].visualize_masks(
+                        inter, f'{save_dir}/stage_{i}_geo_mask.png'
+                    )
+        
+        return visualizations

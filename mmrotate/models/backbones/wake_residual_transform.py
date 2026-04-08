@@ -1,334 +1,314 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 """
-Wake Residual Transform Module for Ship-Wake Dual Stream Detection
+Wake Residual Transform Module
 
-Implements alternating residual connections with:
-- Low-frequency filtering (Gaussian blur) for ship dense texture
-- Strip convolution (1×k, k×1) for wake linear structures
+Interleaved strip convolution and low-frequency filtering for ship-wake feature extraction.
+Configuration for 4-stage backbone:
+    Stage 1: LowFreqResidual (5x5) - preserve ship dense textures
+    Stage 2: StripConvResidual (1x7, 7x1) - extract wake linear structures
+    Stage 3: LowFreqResidual (7x7) - enhance deep semantic textures
+    Stage 4: StripConvResidual (1x11, 11x1) - enhance global wake structures
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from mmcv.cnn import build_activation_layer, build_norm_layer
 from mmcv.runner import BaseModule
 
 
-class StripConvBlock(BaseModule):
-    """Strip convolution block for extracting wake linear structures.
+class StripConvResidual(nn.Module):
+    """Strip convolution for capturing linear structures (wake patterns).
     
-    Uses horizontal (1×k) and vertical (k×1) strip convolutions.
+    Uses asymmetric kernels (1×k and k×1) to efficiently capture elongated features.
     
     Args:
-        in_channels (int): Number of input channels.
-        kernel_size (int): Size of the strip kernel. Default: 7.
-        norm_cfg (dict): Config dict for normalization layer. Default: dict(type='BN').
-        act_cfg (dict): Config dict for activation layer. Default: dict(type='ReLU').
+        channels: Input/output channels
+        kernel_size: Size of the strip kernel (odd number)
     """
     
-    def __init__(self, 
-                 in_channels,
-                 kernel_size=7,
-                 norm_cfg=dict(type='BN'),
-                 act_cfg=dict(type='ReLU'),
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
-        self.in_channels = in_channels
-        self.kernel_size = kernel_size
+    def __init__(self, channels, kernel_size=7):
+        super().__init__()
+        assert kernel_size % 2 == 1, "Kernel size must be odd"
+        padding = kernel_size // 2
         
-        # Horizontal strip convolution: 1×k
+        # Horizontal strip: 1×k
         self.h_conv = nn.Conv2d(
-            in_channels, in_channels // 2, 
+            channels, channels // 2, 
             kernel_size=(1, kernel_size),
-            padding=(0, kernel_size // 2),
-            bias=False
+            padding=(0, padding),
+            groups=channels // 2  # Depthwise
         )
         
-        # Vertical strip convolution: k×1
+        # Vertical strip: k×1
         self.v_conv = nn.Conv2d(
-            in_channels, in_channels // 2,
+            channels, channels // 2,
             kernel_size=(kernel_size, 1),
-            padding=(kernel_size // 2, 0),
-            bias=False
+            padding=(padding, 0),
+            groups=channels // 2  # Depthwise
         )
         
-        # Fusion convolution
-        self.fusion_conv = nn.Conv2d(
-            in_channels, in_channels,
-            kernel_size=1, bias=False
-        )
-        
-        self.norm = build_norm_layer(norm_cfg, in_channels)[1]
-        self.act = build_activation_layer(act_cfg)
+        # Fusion
+        self.fusion = nn.Conv2d(channels, channels, 1)
+        self.norm = nn.BatchNorm2d(channels)
+        self.act = nn.ReLU(inplace=True)
         
     def forward(self, x):
-        """Forward function.
+        """Apply strip convolution.
         
         Args:
-            x (Tensor): Input feature of shape [B, C, H, W].
+            x: Input feature (B, C, H, W)
             
         Returns:
-            Tensor: Output feature of shape [B, C, H, W].
+            out: Transformed feature (B, C, H, W)
         """
-        # Apply horizontal and vertical strip convolutions
-        h_feat = self.h_conv(x)  # [B, C/2, H, W]
-        v_feat = self.v_conv(x)  # [B, C/2, H, W]
+        # Horizontal and vertical strips
+        h_feat = self.h_conv(x)
+        v_feat = self.v_conv(x)
         
-        # Concatenate and fuse
-        concat_feat = torch.cat([h_feat, v_feat], dim=1)  # [B, C, H, W]
-        out = self.fusion_conv(concat_feat)
+        # Concatenate
+        concat = torch.cat([h_feat, v_feat], dim=1)
+        
+        # Fuse
+        out = self.fusion(concat)
         out = self.norm(out)
         out = self.act(out)
         
         return out
 
 
-class LowFreqFilterBlock(BaseModule):
-    """Low-frequency filtering block for ship dense texture preservation.
+class LowFreqResidual(nn.Module):
+    """Low-frequency filtering for preserving dense textures (ship features).
     
-    Uses Gaussian blur to smooth background while preserving texture.
+    Uses Gaussian blur to smooth noise while preserving important textures.
     
     Args:
-        in_channels (int): Number of input channels.
-        kernel_size (int): Size of Gaussian kernel. Default: 5.
-        sigma (float): Standard deviation of Gaussian kernel. 
-                      If None, set to (kernel_size-1)/6. Default: None.
-        init_cfg (dict, optional): Initialization config dict.
+        channels: Input/output channels
+        kernel_size: Gaussian kernel size (odd number)
+        sigma: Gaussian standard deviation
     """
     
-    def __init__(self,
-                 in_channels,
-                 kernel_size=5,
-                 sigma=None,
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
-        self.in_channels = in_channels
+    def __init__(self, channels, kernel_size=5, sigma=None):
+        super().__init__()
+        self.channels = channels
         self.kernel_size = kernel_size
         
-        # Calculate sigma if not provided
+        # Auto-compute sigma if not provided
         if sigma is None:
-            sigma = (kernel_size - 1) / 6.0
+            sigma = 0.3 * ((kernel_size - 1) * 0.5 - 1) + 0.8
         self.sigma = sigma
         
         # Create Gaussian kernel
         kernel = self._create_gaussian_kernel(kernel_size, sigma)
-        # Register as buffer (non-trainable)
         self.register_buffer('gaussian_kernel', kernel)
         
-        # Learnable channel-wise scaling parameter
-        self.channel_scale = nn.Parameter(torch.ones(in_channels))
+        # Learnable weight for residual
+        self.residual_weight = nn.Parameter(torch.tensor(0.1))
         
     def _create_gaussian_kernel(self, kernel_size, sigma):
-        """Create 2D Gaussian kernel."""
-        # Create 1D Gaussian kernel
+        """Create 2D Gaussian kernel.
+        
+        Returns:
+            kernel: (1, 1, K, K) tensor
+        """
+        # Create 1D Gaussian
         x = torch.arange(kernel_size).float() - kernel_size // 2
-        gaussian_1d = torch.exp(-x**2 / (2 * sigma**2))
-        gaussian_1d = gaussian_1d / gaussian_1d.sum()
+        gauss_1d = torch.exp(-x**2 / (2 * sigma**2))
+        gauss_1d = gauss_1d / gauss_1d.sum()
         
-        # Create 2D Gaussian kernel
-        gaussian_2d = gaussian_1d.unsqueeze(0) * gaussian_1d.unsqueeze(1)
-        gaussian_2d = gaussian_2d / gaussian_2d.sum()
+        # Create 2D Gaussian
+        gauss_2d = gauss_1d.unsqueeze(0) * gauss_1d.unsqueeze(1)
+        gauss_2d = gauss_2d.unsqueeze(0).unsqueeze(0)  # (1, 1, K, K)
         
-        # Expand to [C, 1, K, K] for depthwise convolution
-        kernel = gaussian_2d.unsqueeze(0).unsqueeze(0)  # [1, 1, K, K]
-        return kernel
+        return gauss_2d
     
     def forward(self, x):
-        """Forward function.
+        """Apply low-frequency filtering.
         
         Args:
-            x (Tensor): Input feature of shape [B, C, H, W].
+            x: Input feature (B, C, H, W)
             
         Returns:
-            Tensor: Output feature of shape [B, C, H, W].
+            out: Smoothed feature (B, C, H, W)
         """
         B, C, H, W = x.shape
         
-        # Expand kernel for depthwise convolution
-        kernel = self.gaussian_kernel.expand(C, 1, -1, -1)  # [C, 1, K, K]
+        # Expand kernel for all channels
+        kernel = self.gaussian_kernel.expand(C, 1, -1, -1)
         
-        # Apply Gaussian blur using depthwise convolution
+        # Apply Gaussian blur (depthwise)
         padding = self.kernel_size // 2
-        blurred = F.conv2d(x, kernel, padding=padding, groups=C)
+        smoothed = F.conv2d(x, kernel, padding=padding, groups=C)
         
-        # Apply learnable channel-wise scaling
-        scale = self.channel_scale.view(1, C, 1, 1)
-        out = blurred * scale
+        # Residual connection with learnable weight
+        out = smoothed + self.residual_weight * x
         
         return out
 
 
-class WakeResidualBlock(BaseModule):
-    """Wake residual block with alternating transformations.
+class WakeResidualBlock(nn.Module):
+    """Wake residual block with interleaved transformations.
     
-    Alternates between low-frequency filtering and strip convolution
-    based on stage index.
-    
-    Transformation schedule for 4 stages:
-    - Stage 0 (4× downsampling): LowFreqFilter (kernel=5)
-    - Stage 1 (8× downsampling): StripConv (kernel=7)
-    - Stage 2 (16× downsampling): LowFreqFilter (kernel=7)
-    - Stage 3 (32× downsampling): StripConv (kernel=11)
+    Configuration:
+        Stage 0 (init): Identity
+        Stage 1: LowFreqResidual (5x5)
+        Stage 2: StripConvResidual (1x7, 7x1)
+        Stage 3: LowFreqResidual (7x7)
+        Stage 4: StripConvResidual (1x11, 11x1)
     
     Args:
-        in_channels (int): Number of input channels.
-        stage_idx (int): Stage index (0-3).
-        init_cfg (dict, optional): Initialization config dict.
+        channels: Input/output channels
+        stage: Stage index (0-3)
     """
     
-    # Stage configuration: (transform_type, kernel_size)
-    STAGE_CONFIG = {
-        0: ('lowfreq', 5),
-        1: ('strip', 7),
-        2: ('lowfreq', 7),
-        3: ('strip', 11)
-    }
-    
-    def __init__(self,
-                 in_channels,
-                 stage_idx=0,
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
-        self.in_channels = in_channels
-        self.stage_idx = stage_idx
+    def __init__(self, channels, stage=0):
+        super().__init__()
+        self.stage = stage
         
-        # Get stage configuration
-        config = self.STAGE_CONFIG.get(stage_idx, ('lowfreq', 5))
-        transform_type, kernel_size = config
+        # Define configuration for each stage
+        configs = {
+            0: ('identity', {}),  # First stage after stem, no transform
+            1: ('lowfreq', {'kernel_size': 5}),
+            2: ('strip', {'kernel_size': 7}),
+            3: ('lowfreq', {'kernel_size': 7}),
+        }
         
-        # Build transformation module
-        if transform_type == 'strip':
-            self.transform = StripConvBlock(
-                in_channels=in_channels,
-                kernel_size=kernel_size
-            )
-        else:  # 'lowfreq'
-            self.transform = LowFreqFilterBlock(
-                in_channels=in_channels,
-                kernel_size=kernel_size
-            )
+        transform_type, kwargs = configs.get(stage, ('strip', {'kernel_size': 11}))
+        
+        if transform_type == 'identity':
+            self.transform = nn.Identity()
+        elif transform_type == 'strip':
+            self.transform = StripConvResidual(channels, **kwargs)
+        elif transform_type == 'lowfreq':
+            self.transform = LowFreqResidual(channels, **kwargs)
+        else:
+            raise ValueError(f"Unknown transform type: {transform_type}")
         
         self.transform_type = transform_type
         
     def forward(self, x):
-        """Forward function.
+        """Apply transformation.
         
         Args:
-            x (Tensor): Input feature of shape [B, C, H, W].
+            x: Input feature (B, C, H, W)
             
         Returns:
-            Tensor: Transformed feature of shape [B, C, H, W].
+            out: Transformed feature (B, C, H, W)
         """
         return self.transform(x)
 
 
-class ResidualFusion(BaseModule):
-    """Fusion module for combining MoE and residual features.
+class ResidualFusion(nn.Module):
+    """Fusion module combining main branch and residual branch.
     
-    Implements: F_final = F_MoE + λ * F_residual
-    where λ is a learnable parameter initialized to 0.1.
+    Uses learnable weighting and channel attention.
     
     Args:
-        in_channels (int): Number of input channels.
-        init_lambda (float): Initial value for fusion weight. Default: 0.1.
-        init_cfg (dict, optional): Initialization config dict.
+        channels: Channel number
+        init_lambda: Initial weight for residual branch
     """
     
-    def __init__(self,
-                 in_channels,
-                 init_lambda=0.1,
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
-        self.in_channels = in_channels
-        
-        # Learnable fusion weight
+    def __init__(self, channels, init_lambda=0.1):
+        super().__init__()
         self.lambda_residual = nn.Parameter(torch.tensor(init_lambda))
         
-        # Optional: add a small conv to align residual features
-        self.align_conv = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, 1, bias=False),
-            nn.BatchNorm2d(in_channels),
-            nn.ReLU(inplace=True)
+        # Channel attention for adaptive fusion
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.channel_att = nn.Sequential(
+            nn.Linear(channels * 2, channels // 4),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // 4, channels * 2),
+            nn.Sigmoid()
         )
         
-    def forward(self, f_moe, f_residual):
-        """Forward function.
+        # Final fusion conv
+        self.fusion_conv = nn.Conv2d(channels * 2, channels, 1)
+        self.norm = nn.BatchNorm2d(channels)
+        self.act = nn.ReLU(inplace=True)
+        
+    def forward(self, main_feat, residual_feat):
+        """Fuse main and residual features.
         
         Args:
-            f_moe (Tensor): MoE output feature [B, C, H, W].
-            f_residual (Tensor): Residual transform output [B, C, H, W].
+            main_feat: Main branch feature (B, C, H, W)
+            residual_feat: Residual branch feature (B, C, H, W)
             
         Returns:
-            Tensor: Fused feature [B, C, H, W].
+            fused: Fused feature (B, C, H, W)
         """
-        # Align residual features
-        f_residual_aligned = self.align_conv(f_residual)
+        # Weighted residual
+        weighted_residual = self.lambda_residual * residual_feat
         
-        # Fuse with learnable weight
-        # Use sigmoid to constrain lambda to [0, 1] for stability
-        lambda_val = torch.sigmoid(self.lambda_residual)
-        f_fused = f_moe + lambda_val * f_residual_aligned
+        # Concatenate
+        concat = torch.cat([main_feat, weighted_residual], dim=1)  # (B, 2C, H, W)
         
-        return f_fused
+        # Channel attention
+        B, C2, H, W = concat.shape
+        att = self.avg_pool(concat).view(B, C2)
+        att = self.channel_att(att).view(B, C2, 1, 1)
+        
+        # Apply attention
+        attended = concat * att
+        
+        # Fusion
+        fused = self.fusion_conv(attended)
+        fused = self.norm(fused)
+        fused = self.act(fused)
+        
+        # Residual connection
+        out = main_feat + fused
+        
+        return out
 
 
-class WakeResidualPipeline(BaseModule):
-    """Complete residual pipeline for all stages.
+class WakeResidualStage(nn.Module):
+    """Complete wake residual stage with transformation and fusion.
     
-    Manages residual blocks for all 4 stages and their fusion.
+    Combines:
+    1. Transformation (strip conv or low-freq filter)
+    2. Fusion with main branch
     
     Args:
-        channels (list): List of channel numbers for each stage.
-        init_lambda (float): Initial fusion weight. Default: 0.1.
-        init_cfg (dict, optional): Initialization config dict.
+        channels: Channel number
+        stage: Stage index
+        init_lambda: Initial residual weight
     """
     
-    def __init__(self,
-                 channels=[96, 192, 384, 768],
-                 init_lambda=0.1,
-                 init_cfg=None):
-        super().__init__(init_cfg=init_cfg)
-        self.channels = channels
-        self.num_stages = len(channels)
+    def __init__(self, channels, stage=0, init_lambda=0.1):
+        super().__init__()
+        self.transform = WakeResidualBlock(channels, stage)
+        self.fusion = ResidualFusion(channels, init_lambda)
         
-        # Create residual blocks for each stage
-        self.residual_blocks = nn.ModuleList([
-            WakeResidualBlock(channels[i], stage_idx=i)
-            for i in range(self.num_stages)
-        ])
-        
-        # Create fusion modules for each stage
-        self.fusion_modules = nn.ModuleList([
-            ResidualFusion(channels[i], init_lambda=init_lambda)
-            for i in range(self.num_stages)
-        ])
-        
-    def forward(self, features, stage_idx):
-        """Forward function for a specific stage.
+    def forward(self, main_feat, residual_input):
+        """Forward pass.
         
         Args:
-            features (Tensor): Input features [B, C, H, W].
-            stage_idx (int): Current stage index (0-3).
+            main_feat: Main branch feature
+            residual_input: Input for residual transformation
             
         Returns:
-            Tensor: Transformed features for residual connection.
+            fused: Fused feature
         """
-        if stage_idx >= self.num_stages:
-            raise ValueError(f"stage_idx {stage_idx} exceeds num_stages {self.num_stages}")
+        # Apply transformation to residual input
+        residual_feat = self.transform(residual_input)
         
-        # Apply residual transformation
-        transformed = self.residual_blocks[stage_idx](features)
-        return transformed
+        # Fuse with main branch
+        fused = self.fusion(main_feat, residual_feat)
+        
+        return fused
+
+
+# Convenience function for creating interleaved residual modules
+def create_wake_residual_stages(channels_list, init_lambda=0.1):
+    """Create wake residual stages for all 4 backbone stages.
     
-    def fuse(self, f_moe, f_residual, stage_idx):
-        """Fuse MoE and residual features.
+    Args:
+        channels_list: List of channel numbers for each stage [C1, C2, C3, C4]
+        init_lambda: Initial residual weight
         
-        Args:
-            f_moe (Tensor): MoE output features.
-            f_residual (Tensor): Residual transformed features.
-            stage_idx (int): Current stage index.
-            
-        Returns:
-            Tensor: Fused features.
-        """
-        return self.fusion_modules[stage_idx](f_moe, f_residual)
+    Returns:
+        ModuleList of WakeResidualStage
+    """
+    stages = nn.ModuleList()
+    for i, channels in enumerate(channels_list):
+        stages.append(WakeResidualStage(channels, stage=i, init_lambda=init_lambda))
+    return stages
