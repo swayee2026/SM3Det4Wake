@@ -1,6 +1,6 @@
 # SM3Det4Wake: Ship Wake Detection in Optical Remote Sensing
 
-基于 SM3Det 的光学遥感图像船只尾迹目标检测框架
+**基于 SM3Det 的光学遥感图像船只尾迹目标检测框架**
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/)
@@ -9,7 +9,7 @@
 ## 目录
 
 - [项目概述](#项目概述)
-- [使用场景与实验目标](#使用场景与实验目标)
+- [实验目标](#实验目标)
 - [与 SM3Det 的异同](#与-sm3det-的异同)
 - [关键模块介绍](#关键模块介绍)
 - [数据通道概览](#数据通道概览)
@@ -23,24 +23,13 @@ SM3Det4Wake 是一个针对**光学遥感图像中船只尾迹检测**任务而�
 
 ### 核心特性
 
+- 🎯 **Grid-level MoE**: 稀疏专家混合网络用于多尺度特征学习
+- ⚡ **异步学习率优化**: 基于 DSO (Dynamic Submodule Optimization) 的差异化训练策略
 - 🚢 **双任务检测**: 同时检测船只（点回归）和尾迹（旋转框检测）
 - 🔄 **残差连接增强**: 交错的 StripConv 和 LowFreq 残差模块
 - 🧭 **几何注意力引导**: 船只与尾迹互相关的方向感知注意力机制
-- ⚡ **异步学习率优化**: 基于 DSO (Dynamic Submodule Optimization) 的差异化训练策略
-- 🎯 **Grid-level MoE**: 稀疏专家混合网络用于多尺度特征学习
 
-## 使用场景与实验目标
-
-### 应用场景
-
-本项目主要针对以下场景：
-
-1. **港口监控**: 检测进出港船只及其尾迹轨迹
-2. **航道管理**: 监测船只航行方向和尾迹扩散
-3. **海洋环境监测**: 通过尾迹分析船只速度和载重
-4. **海上搜救**: 通过尾迹追踪失踪船只
-
-### 实验目标
+## 实验目标
 
 | 目标类型 | 标注格式 | 检测头 | 输出维度 |
 |---------|---------|--------|---------|
@@ -395,18 +384,6 @@ SM3Det4Wake/
 └── README-SM3Det4Wake.md                 # 本文件
 ```
 
-## 引用
-
-如果您使用了本项目，请引用：
-
-```bibtex
-@article{li2024sm3det,
-  title={SM3Det: A Unified Model for Multi-Modal Remote Sensing Object Detection},
-  author={Li, Y.
-  journal={arXiv preprint arXiv:2412.20665},
-  year={2024}
-}
-```
 
 ## 许可证
 
@@ -414,10 +391,10 @@ SM3Det4Wake/
 
 ## 致谢
 
-- 基于 [OpenMMLab MMRotate](https://github.com/open-mmlab/mmrotate) 框架
-- SM3Det 论文作者的开源实现
-- SWIM 数据集提供者
+- [OpenMMLab MMRotate](https://github.com/open-mmlab/mmrotate) 框架
+- [SM3Det](https://github.com/zcablii/SM3Det) 模型实现
+- [SWIM](https://www.kaggle.com/datasets/lilitopia/swimship-wake-imagery-mass)数据集
 
----
 
-**联系**: 如有问题或建议，欢迎提交 Issue 或 PR。
+
+

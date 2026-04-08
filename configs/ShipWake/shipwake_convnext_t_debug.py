@@ -172,6 +172,7 @@ model = dict(
             max_per_img=500)))
 
 # SWIM Dataset configuration (debug)
+# TODO edit dataset dir path
 dataset_type = 'SWIMDataset'
 data_root = 'data/SWIM_debug/'  # Use small subset for debug
 
