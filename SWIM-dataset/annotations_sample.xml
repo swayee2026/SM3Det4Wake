@@ -1,0 +1,28 @@
+<annotation>
+  <folder>Positive</folder>
+  <filename>00001</filename>
+  <format>jpg</format>
+  <source>
+    <database>SWIM</database>
+  </source>
+  <size>
+    <width>768</width>
+    <height>768</height>
+    <depth>3</depth>
+  </size>
+  <segmented>0</segmented>
+  <object>
+    <type>robndbox</type>
+    <name>wake</name>
+    <pose>Unspecified</pose>
+    <truncated>0</truncated>
+    <difficult>0</difficult>
+    <robndbox>
+      <cx>602.8032</cx>
+      <cy>53.0397</cy>
+      <w>44.4618</w>
+      <h>96.8959</h>
+      <angle>0.53</angle>
+    </robndbox>
+  </object>
+</annotation>

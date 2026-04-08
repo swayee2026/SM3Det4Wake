@@ -32,9 +32,9 @@
 我使用的基座模型是 SM3Det，我使用的数据集是开源的swimshipwake-imagery-mass。
 接下来，我需要你帮我解读和分析  SM3Det 这一篇论文。然后我会告诉你，我的模型的修改的构想，你来评价可行性并补充细节，最后，我需要使用 kimi code 辅助我的代码编程任务，完成这一篇论文的代码工作。
 
-SM3Det 这一篇论文的核心点在于，将 遥感 领域的3类常见模态串联了起来，也就是 optical infrared and SAR，他使用了多专家模块 MoE和一个router，多任务(HBB, OBB)的下游检测头，和一个Dynamic Submodule Optimization (DSO)可以动态差异化的调节每个检测头的学习率。
+SM3Det 这一篇论文的核心点在于，将遥感领域的3类常见模态串联了起来，也就是 optical infrared and SAR，他使用了多专家模块 MoE 和一个router，多任务(HBB, OBB)的下游检测头，和一个Dynamic Submodule Optimization (DSO)可以动态差异化的调节每个检测头的学习率。
 
-而我的任务是：光学图像中的船只目标检测，因此是单模态，2种指定的目标类型，同时是单任务（oriented bounding box detection, OBB)，我也需要使用差异化的学习率模块。同时，更进一步的，我希望设计一个Dual stream 的管线构造。
+我的任务是：光学图像中的船只目标检测，因此是单模态，2种指定的目标类型。由于数据集的构造，依然是双任务，一个任务是尾迹目标的旋转目标框的学习（oriented bounding box detection, OBB），我也需要使用差异化的学习率模块。同时，更进一步的，我希望设计一个Dual stream 的管线构造。
 
 我有一个核心的观察：
 1. 在遥感图像中，船只目标的尺寸很小，但是纹理特征明显且密集；尾迹的尺寸很大（bbox size），但是特征稀疏。
