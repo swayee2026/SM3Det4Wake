@@ -3,7 +3,7 @@
 
 # Dataset type - using standard DOTA format for oriented boxes
 dataset_type = 'DOTADataset'  # Can be changed to custom dataset if needed
-data_root = 'data/SwimShip/'
+data_root = 'data/SwimShip/' # TODO edit dataset path
 
 # Image normalization (ImageNet stats)
 img_norm_cfg = dict(
