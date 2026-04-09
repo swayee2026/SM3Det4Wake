@@ -275,7 +275,7 @@ log_config = dict(
     interval=1,  # Log every iteration
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook')
+        dict(type='TensorboardLoggerHook', out_dir='/root/tf-logs/', interval=1)
     ])
 
 # Evaluation

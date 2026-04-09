@@ -266,8 +266,12 @@ pip install -r requirements.txt
 # 5. 安装本项目
 pip install -e .
 
-# download dataset SWIM
+# activate environment
+conda activate SM3Det4Wake
 source /etc/network_turbo
+env | grep prox
+unset http_proxy && unset https_proxy
+# download dataset SWIM
 curl -L -o ./swimship-wake-imagery-mass.zip https://www.kaggle.com/api/v1/datasets/download/lilitopia/swimship-wake-imagery-mass
 kaggle datasets download -d lilitopia/swimship-wake-imagery-mass -p /root/autodl-tmp/swim/ --unzip
 
@@ -277,6 +281,8 @@ git clone https://huggingface.co/datasets/Voxel51/OpenSARWake/tree/main
 
 # sync with github
 git clone https://ghfast.top/https://github.com/swayee2026/SM3Det4Wake.git
+
+git pull
 
 ```
 

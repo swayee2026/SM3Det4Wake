@@ -371,7 +371,7 @@ log_config = dict(
     interval=50,  # Log every 50 iterations
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook'),  # Enable tensorboard
+        dict(type='TensorboardLoggerHook', out_dir='/root/tf-logs/', interval=10),  # Enable tensorboard for AutoDL
     ]
 )
 
