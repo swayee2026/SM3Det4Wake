@@ -124,6 +124,9 @@ class ConvNeXt_moe_wake(ConvNeXt_moe_MultiInput):
             outs: Output feature pyramid
             intermediates: (optional) List of dict with intermediate features
         """
+        # DEBUG: Print input shape
+        print(f"[DEBUG] ConvNeXt_moe_wake.forward input shape: {x.shape}")
+        
         outs = []
         intermediates = [] if return_intermediates else None
         gate_losses = []
@@ -131,6 +134,12 @@ class ConvNeXt_moe_wake(ConvNeXt_moe_MultiInput):
         
         for i, stage in enumerate(self.stages):
             # Downsample
+            print(f"[DEBUG] Before downsample_layers[{i}]: x.shape = {x.shape}")
+            print(f"[DEBUG] downsample_layers[{i}] type: {type(self.downsample_layers[i])}")
+            if hasattr(self.downsample_layers[i], 'normalized_shape'):
+                print(f"[DEBUG] downsample_layers[{i}] normalized_shape: {self.downsample_layers[i].normalized_shape}")
+            elif hasattr(self, 'dataset_stems'):
+                print(f"[DEBUG] dataset_stems available: {list(self.dataset_stems.keys())}")
             x = self.downsample_layers[i](x)
             
             # Store for residual input

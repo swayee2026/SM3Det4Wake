@@ -143,15 +143,14 @@ class SWIMFormatBundle:
             # if isinstance(img, torch.Tensor):
             #     img = img.cpu().numpy()
             
-            # Handle different input shapes
-            if len(img.shape) == 4:
-                # If there's an extra batch dimension (e.g., [1, H, W, 3]), squeeze it
-                if img.shape[0] == 1:
-                    img = img.squeeze(0)
-            
-            # Transpose from HWC to CHW format
+            # Check current format and transpose if needed
+            # HWC format: [H, W, C] where C is typically 3
+            # CHW format: [C, H, W] where C is typically 3
             if len(img.shape) == 3:
-                img = np.ascontiguousarray(img.transpose(2, 0, 1))
+                if img.shape[2] == 3:
+                    # HWC format, transpose to CHW
+                    img = np.ascontiguousarray(img.transpose(2, 0, 1))
+                # else: already CHW format (shape[0] == 3), no transpose needed
             
             results['img'] = DC(to_tensor(img), stack=True)
         

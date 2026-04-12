@@ -173,8 +173,14 @@ def test_forward_pass(model, dataloader, device, max_iter=3):
                 print(f"\n  Iteration {i+1}:")
                 
                 # Move data to device
+                print(f"    - data['img'] type: {type(data['img'])}")
+                print(f"    - data['img'].data type: {type(data['img'].data)}")
+                print(f"    - data['img'].data length: {len(data['img'].data)}")
+                print(f"    - data['img'].data[0] type: {type(data['img'].data[0])}")
                 img = data['img'].data[0].to(device)
                 print(f"    - Input shape: {img.shape}")
+                print(f"    - Input dtype: {img.dtype}")
+                print(f"    - Input device: {img.device}")
                 
                 # Forward pass
                 if hasattr(model, 'backbone') and hasattr(model.backbone, 'forward_with_intermediates'):
