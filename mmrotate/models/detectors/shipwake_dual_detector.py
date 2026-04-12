@@ -177,16 +177,23 @@ class ShipWakeDualDetector(RotatedBaseDetector):
             feats: Feature pyramid
             intermediates: (optional) Dict with intermediate results
         """
-        # Check if backbone supports geometric MAMG
-        if hasattr(self.backbone, 'forward_with_intermediates'):
-            outs, intermediates = self.backbone.forward_with_intermediates(img)
+        # Use forward_with_intermediates only when needed to save memory
+        if return_intermediates and hasattr(self.backbone, 'forward_with_intermediates'):
+            result = self.backbone.forward_with_intermediates(img)
+            # Handle return format: (outs, intermediates) or (outs, intermediates, gate_loss)
+            if len(result) == 3:
+                outs, intermediates, gate_loss = result
+            else:
+                outs, intermediates = result
+                gate_loss = None
         else:
+            # Standard forward without intermediates (saves memory)
             outs = self.backbone(img)
             intermediates = None
+            gate_loss = None
             
         # Handle MoE gate loss
-        gate_loss = None
-        if isinstance(outs, tuple):
+        if gate_loss is None and isinstance(outs, tuple):
             if len(outs) == 2:
                 outs, gate_loss = outs
             elif len(outs) == 3:
@@ -258,13 +265,8 @@ class ShipWakeDualDetector(RotatedBaseDetector):
         """
         losses = dict()
         
-        # Extract features
-        feats, intermediates, gate_loss = self.extract_feat(
-            img, return_intermediates=True
-        )
-        
-        # Store intermediates for visualization
-        self.intermediate_features = intermediates
+        # Extract features (don't return intermediates during training to save memory)
+        feats, gate_loss = self.extract_feat(img, return_intermediates=False)
         
         if gate_loss is not None:
             losses['gate_loss'] = gate_loss

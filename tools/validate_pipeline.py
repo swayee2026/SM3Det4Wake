@@ -214,7 +214,7 @@ def test_forward_pass(model, dataloader, device, max_iter=3):
         return False
 
 
-def test_loss_computation(model, dataloader, device, max_iter=2):
+def test_loss_computation(model, dataloader, device, max_iter=1):
     """Test loss computation."""
     print("\n" + "="*60)
     print("TEST 4: Loss Computation")
@@ -272,13 +272,18 @@ def test_loss_computation(model, dataloader, device, max_iter=2):
                 print(f"    - GT labels: {len(gt_labels)} batches")
             
             # Forward pass with losses
+            # MMDetection's BaseDetector.forward() expects: forward(img, img_metas, return_loss=True, **kwargs)
+            # GT data must be passed as keyword arguments
             try:
                 losses = model(
                     img,
                     img_metas,
-                    gt_bboxes_dict,
-                    gt_labels_dict,
-                    return_loss=True)
+                    return_loss=True,
+                    gt_wake_bboxes=gt_bboxes_dict.get('wake'),
+                    gt_wake_labels=gt_labels_dict.get('wake'),
+                    gt_ship_points=gt_bboxes_dict.get('ship_points'),
+                    gt_ship_directions=gt_bboxes_dict.get('ship_directions'),
+                    gt_ship_labels=gt_labels_dict.get('ship'))
                 
                 print(f"    ✓ Losses computed")
                 
