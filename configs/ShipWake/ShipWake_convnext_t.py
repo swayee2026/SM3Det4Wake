@@ -46,6 +46,7 @@ model = dict(
         num_outs=5),
     
     # Dual detection head
+    # TODO edit one-stage head config like in debug.py
     bbox_head=dict(
         type='ShipWakeDualHead',
         in_channels=256,
@@ -135,7 +136,7 @@ optimizer = dict(
 # SWIM Dataset configuration
 # TODO edit dataset dir on auto-DL
 dataset_type = 'SWIMDataset'
-data_root = '/root/autodl-tmp/swim/SWIM_Dataset_1.0.0'
+data_root = '/root/autodl-tmp/swim/SWIM_Dataset_1.0.0/'
 
 # Image normalization
 img_norm_cfg = dict(
@@ -192,7 +193,7 @@ data = dict(
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'ImageSets/Main/train.txt',
-        img_prefix=data_root,
+        img_prefix=data_root+'PNGImages', 
         wake_ann_dir='Annotations',
         ship_ann_dir='Landmarks',
         img_dir='PNGImages',
@@ -201,7 +202,7 @@ data = dict(
     val=dict(
         type=dataset_type,
         ann_file=data_root + 'ImageSets/Main/val.txt',
-        img_prefix=data_root,
+        img_prefix=data_root+'PNGImages',
         wake_ann_dir='Annotations',
         ship_ann_dir='Landmarks',
         img_dir='PNGImages',
@@ -210,7 +211,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         ann_file=data_root + 'ImageSets/Main/test.txt',
-        img_prefix=data_root,
+        img_prefix=data_root+'PNGImages',
         wake_ann_dir='Annotations',
         ship_ann_dir='Landmarks',
         img_dir='PNGImages',

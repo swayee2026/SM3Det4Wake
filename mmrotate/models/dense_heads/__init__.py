@@ -17,7 +17,7 @@ from .rotated_retina_refine_head import RotatedRetinaRefineHead
 from .rotated_rpn_head import RotatedRPNHead
 from .sam_reppoints_head import SAMRepPointsHead
 from .ship_wake_head import (
-    ShipWakeHead, ShipWakeDualHead, WakeOBBHead, ShipPointHead,
+    ShipWakeDualHead, ShipWakeDualHead, WakeOBBHead, ShipPointHead,
     CosineSimilarityLoss
 )
 
@@ -29,6 +29,6 @@ __all__ = [
     'RotatedATSSHead', 'RotatedAnchorFreeHead', 'RotatedFCOSHead',
     'CSLRFCOSHead', 'OrientedRepPointsHead',
     # Ship-wake detection heads
-    'ShipWakeHead', 'ShipWakeDualHead', 'WakeOBBHead', 'ShipPointHead',
+    'ShipWakeDualHead', 'ShipWakeDualHead', 'WakeOBBHead', 'ShipPointHead',
     'CosineSimilarityLoss'
 ]

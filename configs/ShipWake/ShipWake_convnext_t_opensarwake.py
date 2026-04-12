@@ -112,7 +112,7 @@ optimizer = dict(
 # OpenSARWake Dataset configuration
 # TODO edit dataset dir
 dataset_type = 'OpenSARWakeDataset'
-data_root = '/root/autodl-tmp/opensarwake/OpenSARWake'
+data_root = '/root/autodl-tmp/opensarwake/OpenSARWake/'
 
 # Image normalization
 img_norm_cfg = dict(
@@ -167,7 +167,7 @@ data = dict(
     train=dict(
         type=dataset_type,
         ann_file=data_root + 'samples.json',
-        img_prefix=data_root,
+        img_prefix=data_root+'data/',
         img_dir='data',
         pipeline=train_pipeline,
         version=angle_version,
@@ -175,7 +175,7 @@ data = dict(
     val=dict(
         type=dataset_type,
         ann_file=data_root + 'samples.json',
-        img_prefix=data_root,
+        img_prefix=data_root+'data/',
         img_dir='data',
         pipeline=test_pipeline,
         version=angle_version,
@@ -183,7 +183,7 @@ data = dict(
     test=dict(
         type=dataset_type,
         ann_file=data_root + 'samples.json',
-        img_prefix=data_root,
+        img_prefix=data_root+'data/',
         img_dir='data',
         pipeline=test_pipeline,
         version=angle_version,

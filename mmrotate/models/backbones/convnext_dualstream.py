@@ -28,7 +28,7 @@ from timm.models.layers import DropPath, trunc_normal_
 from .convnext_moe import (ConvNeXt_moe, ConvNeXtBlock, MoE_layer, FFN,
                            LayerNorm2d, build_LayerNorm2d_layer, GRN,
                            CosineTopKGate, SparseDispatcher)
-from .wake_residual_transform import WakeResidualPipeline
+from .wake_residual_transform import create_wake_residual_stages
 from .mutual_attention_mask import MutualAttentionMaskModule
 from ..builder import ROTATED_BACKBONES
 
@@ -96,7 +96,7 @@ class ConvNeXtBlock_DualStream(ConvNeXtBlock):
         
         # Residual transform
         if use_residual:
-            self.residual_transform = WakeResidualPipeline(
+            self.residual_transform = create_wake_residual_stages(
                 channels=[in_channels],
                 init_lambda=init_lambda
             ).residual_blocks[0]  # Get single block for this stage

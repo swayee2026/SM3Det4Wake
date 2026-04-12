@@ -111,8 +111,7 @@ class SWIMDataset(CustomDataset):
         data_info['img_prefix'] = self.img_prefix
         
         # Get image size
-        img_bytes = mmcv.fileio.get(img_path)
-        img = mmcv.imfrombytes(img_bytes)
+        img = mmcv.imread(img_path) # edited
         data_info['width'] = img.shape[1]
         data_info['height'] = img.shape[0]
         
