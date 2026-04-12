@@ -174,7 +174,7 @@ model = dict(
 # SWIM Dataset configuration (debug)
 # TODO edit dataset dir path
 dataset_type = 'SWIMDataset'
-data_root = 'data/SWIM_debug/'  # Use small subset for debug
+data_root = '/root/autodl-tmp/swim/tiny_swim'  # Use small subset for debug
 
 # Image normalization
 img_norm_cfg = dict(

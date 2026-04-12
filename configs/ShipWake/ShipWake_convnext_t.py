@@ -133,8 +133,9 @@ optimizer = dict(
         }))
 
 # SWIM Dataset configuration
+# TODO edit dataset dir on auto-DL
 dataset_type = 'SWIMDataset'
-data_root = 'data/SWIM_Dataset_1.0.0/'
+data_root = '/root/autodl-tmp/swim/SWIM_Dataset_1.0.0'
 
 # Image normalization
 img_norm_cfg = dict(

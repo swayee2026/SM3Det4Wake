@@ -10,7 +10,8 @@ This script validates:
 5. Visualization output
 
 Usage:
-    python tools/validate_pipeline.py configs/ShipWake/shipwake_convnext_t_debug.py
+    python tools/validate_pipeline.py configs/ShipWake/shipwake_convnext_t_debug.py --device cpu
+    
 """
 
 import argparse
@@ -42,7 +43,7 @@ def parse_args():
                        help='visualization directory')
     parser.add_argument('--device', default='cuda:0', 
                        help='device used for validation')
-    parser.add_argument('--max-iter', type=int, default=5,
+    parser.add_argument('--max-iter', type=int, default=2,
                        help='maximum iterations to run')
     args = parser.parse_args()
     return args
@@ -465,4 +466,5 @@ def main():
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    flag=main()
+    sys.exit(flag)

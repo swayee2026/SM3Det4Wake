@@ -110,8 +110,9 @@ optimizer = dict(
         }))
 
 # OpenSARWake Dataset configuration
+# TODO edit dataset dir
 dataset_type = 'OpenSARWakeDataset'
-data_root = 'data/OpenSARWake/'
+data_root = '/root/autodl-tmp/opensarwake/OpenSARWake'
 
 # Image normalization
 img_norm_cfg = dict(

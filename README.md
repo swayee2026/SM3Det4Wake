@@ -277,12 +277,21 @@ kaggle datasets download -d lilitopia/swimship-wake-imagery-mass -p /root/autodl
 
 
 # download dataset OpenSARWake
-git clone https://huggingface.co/datasets/Voxel51/OpenSARWake/tree/main
+git clone https://huggingface.co/datasets/Voxel51/OpenSARWake
+git clone https://hf-mirror.com//datasets/Voxel51/OpenSARWake
 
 # sync with github
 git clone https://ghfast.top/https://github.com/swayee2026/SM3Det4Wake.git
 
 git pull
+
+
+#dataset dir
+--dir /root/autodl-tmp/swim/tiny_swim
+--dir /root/autodl-tmp/swim/tiny_swim/Annotations
+--dir /root/autodl-tmp/swim/tiny_swim/Landmarks
+--dir /root/autodl-tmp/swim/tiny_swim/PNGImages
+--dir /root/autodl-tmp/swim/tiny_swim/ImageSets
 
 ```
 
