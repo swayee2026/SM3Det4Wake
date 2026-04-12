@@ -57,11 +57,11 @@ class GaussianMixture():
                 ), 'Input mu_init does not have required tensor dimensions' \
                    ' (%i, %i, %i)' % (
                        self.T, self.n_components, self.n_features)
-                self.mu = self.mu_init.clone().requires_grad_().cuda()
+                self.mu = self.mu_init.clone().requires_grad_()
             else:
                 self.mu = torch.randn(
                     (self.T, self.n_components, self.n_features),
-                    requires_grad=True).cuda()
+                    requires_grad=True)
 
             if self.var_init is not None:
                 assert torch.is_tensor(self.var_init)
@@ -72,16 +72,16 @@ class GaussianMixture():
                                       (self.T, self.n_components,
                                        self.n_features,
                                        self.n_features)
-                self.var = self.var_init.clone().requires_grad_().cuda()
+                self.var = self.var_init.clone().requires_grad_()
             else:
                 self.var = torch.eye(self.n_features).reshape(
                     (1, 1, self.n_features, self.n_features))\
                     .repeat(self.T, self.n_components, 1, 1)\
-                    .requires_grad_().cuda()
+                    .requires_grad_()
 
             self.pi = torch.empty(
                 (self.T, self.n_components,
-                 1)).fill_(1. / self.n_components).requires_grad_().cuda()
+                 1)).fill_(1. / self.n_components).requires_grad_()
         else:
             if self.mu_init is not None:
                 assert torch.is_tensor(self.mu_init)
@@ -90,10 +90,10 @@ class GaussianMixture():
                 ), 'Input mu_init does not have required tensor dimensions' \
                    ' (%i, %i, %i)' % (
                        self.T, self.n_components, self.n_features)
-                self.mu = self.mu_init.clone().cuda()
+                self.mu = self.mu_init.clone()
             else:
                 self.mu = torch.randn(
-                    (self.T, self.n_components, self.n_features)).cuda()
+                    (self.T, self.n_components, self.n_features))
 
             if self.var_init is not None:
                 assert torch.is_tensor(self.var_init)
@@ -104,15 +104,15 @@ class GaussianMixture():
                                       (self.T, self.n_components,
                                        self.n_features,
                                        self.n_features)
-                self.var = self.var_init.clone().cuda()
+                self.var = self.var_init.clone()
             else:
                 self.var = torch.eye(self.n_features).reshape(
                     (1, 1, self.n_features,
                      self.n_features)).repeat(self.T, self.n_components, 1,
-                                              1).cuda()
+                                              1)
 
             self.pi = torch.empty((self.T, self.n_components,
-                                   1)).fill_(1. / self.n_components).cuda()
+                                   1)).fill_(1. / self.n_components)
 
         self.params_fitted = False
 

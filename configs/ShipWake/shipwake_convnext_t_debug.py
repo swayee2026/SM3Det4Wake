@@ -15,6 +15,13 @@ NOTE: Using single-stage mode with dual detection heads.
 angle_version = 'le90'
 debug_mode = True
 
+# SWIM Dataset configuration (debug)
+# TODO edit dataset dir path
+dataset_type = 'SWIMDataset'
+data_root = '/root/autodl-tmp/swim/tiny_swim/'  # Use small subset for debug
+img_size:int=200
+
+
 # Model configuration (minimal)
 model = dict(
     type='ShipWakeDualDetector',
@@ -116,10 +123,7 @@ model = dict(
         nms=dict(iou_thr=0.1),
         max_per_img=2000))
 
-# SWIM Dataset configuration (debug)
-# TODO edit dataset dir path
-dataset_type = 'SWIMDataset'
-data_root = '/root/autodl-tmp/swim/tiny_swim/'  # Use small subset for debug
+
 
 # Image normalization
 img_norm_cfg = dict(
@@ -132,10 +136,10 @@ img_norm_cfg = dict(
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadSWIMAnnotations', with_wake_bbox=True, with_ship_point=True),
-    dict(type='RResize', img_scale=(800, 800)),
+    dict(type='RResize', img_scale=(img_size, img_size)),
     dict(type='RRandomFlip', flip_ratio=0.0, version=angle_version),  # No augmentation for debug
     dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size=(800, 800)),
+    dict(type='Pad', size=(img_size, img_size)),
     dict(type='SWIMFormatBundle'),
     dict(type='CollectSWIM', keys=['img', 'gt_wake_bboxes', 'gt_wake_labels',
                                     'gt_ship_points', 'gt_ship_directions', 
@@ -148,7 +152,7 @@ test_pipeline = [
     dict(type='LoadSWIMAnnotations', with_wake_bbox=True, with_ship_point=True),
     dict(
         type='MultiScaleFlipAug',
-        img_scale=(800, 800),
+        img_scale=(img_size, img_size),
         flip=False,
         transforms=[
             dict(type='RResize'),
