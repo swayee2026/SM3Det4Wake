@@ -305,7 +305,7 @@ class WakeVisualizer:
     def _plot_combined_directions(self, ax, ship_dir, wake_dir, title):
         """Plot combined ship and wake directions."""
         H, W = ship_dir.shape[1], ship_dir.shape[2]
-        step = max(H, W) // 20
+        step = max(max(H, W) // 20, 1)  # Ensure step >= 1
         
         y, x = np.mgrid[0:H:step, 0:W:step]
         
@@ -473,7 +473,12 @@ def visualize_backbone_intermediates(backbone,
     
     # Forward pass with intermediates
     with torch.no_grad():
-        outputs, intermediates = backbone.forward_with_intermediates(input_tensor)
+        result = backbone.forward_with_intermediates(input_tensor)
+        # Handle return format: (outs, intermediates) or (outs, intermediates, gate_loss)
+        if len(result) == 3:
+            outputs, intermediates, _ = result
+        else:
+            outputs, intermediates = result
     
     saved_paths = {}
     
