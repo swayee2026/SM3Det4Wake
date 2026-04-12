@@ -124,22 +124,17 @@ class ConvNeXt_moe_wake(ConvNeXt_moe_MultiInput):
             outs: Output feature pyramid
             intermediates: (optional) List of dict with intermediate features
         """
-        # DEBUG: Print input shape
-        print(f"[DEBUG] ConvNeXt_moe_wake.forward input shape: {x.shape}")
-        
         outs = []
         intermediates = [] if return_intermediates else None
         gate_losses = []
         prev_geo_mask = None
         
+        # Stage 0: Use dataset_stems for patch embedding (ConvNeXt_moe_MultiInput architecture)
+        # dataset_stems['single'] contains the Conv2d that was originally in downsample_layers[0]
+        x = self.dataset_stems['single'](x)  # [B, 3, 800, 800] -> [B, 96, 200, 200]
+        
         for i, stage in enumerate(self.stages):
-            # Downsample
-            print(f"[DEBUG] Before downsample_layers[{i}]: x.shape = {x.shape}")
-            print(f"[DEBUG] downsample_layers[{i}] type: {type(self.downsample_layers[i])}")
-            if hasattr(self.downsample_layers[i], 'normalized_shape'):
-                print(f"[DEBUG] downsample_layers[{i}] normalized_shape: {self.downsample_layers[i].normalized_shape}")
-            elif hasattr(self, 'dataset_stems'):
-                print(f"[DEBUG] dataset_stems available: {list(self.dataset_stems.keys())}")
+            # Downsample: for stage 0, this applies LayerNorm; for later stages, Conv2d + LayerNorm
             x = self.downsample_layers[i](x)
             
             # Store for residual input
