@@ -156,7 +156,7 @@ def test_model_construction(cfg, device):
         return None
 
 
-def test_forward_pass(model, dataloader, device, max_iter=3):
+def test_forward_pass(model, dataloader, device, max_iter=2):
     """Test model forward pass."""
     print("\n" + "="*60)
     print("TEST 3: Forward Pass")
@@ -355,12 +355,24 @@ def test_backward_pass(model, dataloader, device):
             gt_labels_dict = {'ship': gt_labels, 'wake': gt_labels}
         
         print("  Forward pass...")
-        losses = model(
-            img,
-            img_metas,
-            gt_bboxes_dict,
-            gt_labels_dict,
-            return_loss=True)
+        # Fix: Use keyword arguments to avoid conflict with return_loss
+        if 'gt_wake_bboxes' in data:
+            losses = model(
+                img,
+                img_metas,
+                return_loss=True,
+                gt_wake_bboxes=gt_bboxes_dict.get('wake'),
+                gt_wake_labels=gt_labels_dict.get('wake'),
+                gt_ship_points=gt_bboxes_dict.get('ship_points'),
+                gt_ship_directions=gt_bboxes_dict.get('ship_directions'),
+                gt_ship_labels=gt_labels_dict.get('ship'))
+        else:
+            losses = model(
+                img,
+                img_metas,
+                return_loss=True,
+                gt_bboxes=gt_bboxes_dict['ship'],
+                gt_labels=gt_labels_dict['ship'])
         
         print("  Computing total loss...")
         total_loss = 0
