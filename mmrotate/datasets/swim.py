@@ -67,11 +67,6 @@ class SWIMDataset(CustomDataset):
         self.img_dir = img_dir
         self.version = version
         
-        # Debug: print initialization parameters
-        print(f"[SWIMDataset.__init__] img_prefix={img_prefix}")
-        print(f"[SWIMDataset.__init__] img_dir={img_dir}")
-        print(f"[SWIMDataset.__init__] self.img_dir={self.img_dir}")
-        
         super().__init__(ann_file, pipeline, img_prefix=img_prefix, **kwargs)
     
     def load_annotations(self, ann_file):
@@ -86,24 +81,10 @@ class SWIMDataset(CustomDataset):
         data_infos = []
         img_ids = mmcv.list_from_file(ann_file)
         
-        print(f"[SWIMDataset] Loading annotations from: {ann_file}")
-        print(f"[SWIMDataset] Found {len(img_ids)} image IDs in list file")
-        print(f"[SWIMDataset] Image prefix: {self.img_prefix}")
-        print(f"[SWIMDataset] Image directory: {self.img_dir}")
-        
-        failed_count = 0
         for img_id in img_ids:
             data_info = self._load_single_image(img_id)
             if data_info is not None:
                 data_infos.append(data_info)
-            else:
-                failed_count += 1
-                if failed_count <= 3:  # Only print first 3 failures
-                    print(f"[SWIMDataset] Warning: Failed to load image: {img_id}")
-        
-        print(f"[SWIMDataset] Successfully loaded {len(data_infos)} samples")
-        if failed_count > 0:
-            print(f"[SWIMDataset] Warning: Failed to load {failed_count} samples")
         
         return data_infos
     
@@ -120,6 +101,11 @@ class SWIMDataset(CustomDataset):
         
         # Clean img_id - remove any whitespace or file extension
         img_id = img_id.strip()
+        
+        # Skip empty lines
+        if not img_id:
+            return None
+            
         img_id = osp.splitext(img_id)[0]  # Remove extension if present
         
         img_name = f'{img_id}.png'
@@ -127,23 +113,18 @@ class SWIMDataset(CustomDataset):
         # Build image path
         if self.img_dir:
             img_path = osp.join(self.img_prefix, self.img_dir, img_name)
+            # Store filename with subdirectory for LoadImageFromFile
+            filename = osp.join(self.img_dir, img_name)
         else:
             img_path = osp.join(self.img_prefix, img_name)
+            filename = img_name
         
         # Check if image exists
         if not osp.exists(img_path):
             print(f"[SWIMDataset] Image not found: {img_path}")
-            print(f"  - img_prefix: {self.img_prefix}")
-            print(f"  - img_dir: {self.img_dir} (type: {type(self.img_dir)})")
-            print(f"  - img_name: {img_name}")
-            # Try to find file in alternative locations
-            alt_path1 = osp.join(self.img_prefix, 'PNGImages', img_name)
-            alt_path2 = osp.join(self.img_prefix, img_name)
-            print(f"  - Would alternative path 1 exist? {alt_path1}: {osp.exists(alt_path1)}")
-            print(f"  - Would alternative path 2 exist? {alt_path2}: {osp.exists(alt_path2)}")
             return None
         
-        data_info['filename'] = img_name
+        data_info['filename'] = filename
         data_info['img_prefix'] = self.img_prefix
         
         # Get image size
@@ -334,11 +315,6 @@ class SWIMDataset(CustomDataset):
                 has_ship = len(data_info['ann']['ship_points']) > 0
                 if has_wake or has_ship:
                     valid_inds.append(i)
-        
-        if len(valid_inds) != len(self.data_infos):
-            print(f"[SWIMDataset] Filtered {len(self.data_infos) - len(valid_inds)} "
-                  f"empty samples (filter_empty_gt={self.filter_empty_gt})")
-        
         return valid_inds
     
     def evaluate(self,
