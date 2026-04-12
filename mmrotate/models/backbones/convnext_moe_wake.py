@@ -188,12 +188,16 @@ class ConvNeXt_moe_wake(ConvNeXt_moe_MultiInput):
         
         # Compile outputs
         output = tuple(outs)
-        if len(gate_losses) > 0:
-            gate_loss = sum(gate_losses) / len(gate_losses)
-            output = (output, gate_loss)
         
         if return_intermediates:
+            if len(gate_losses) > 0:
+                gate_loss = sum(gate_losses) / len(gate_losses)
+                return output, intermediates, gate_loss
             return output, intermediates
+        
+        if len(gate_losses) > 0:
+            gate_loss = sum(gate_losses) / len(gate_losses)
+            return output, gate_loss
         return output
     
     def forward_with_intermediates(self, x):

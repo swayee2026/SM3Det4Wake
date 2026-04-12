@@ -235,6 +235,8 @@ class CrossGuidedFusion(nn.Module):
             'dir_alignment': dir_alignment,
             'wake_directional_att': wake_directional_att,
             'ship_directional_att': ship_directional_att,
+            'wake_guidance': wake_directional_att,  # Alias for compatibility
+            'ship_guidance': ship_directional_att,  # Alias for compatibility
             'wake_cos_diff': wake_cos_diff,
             'ship_cos_diff': ship_cos_diff,
             'ship_conf': ship_conf,
@@ -327,8 +329,9 @@ class GeometricMAMG(BaseModule):
         geo_mask = self.mask_generator(feat)  # (B, 6, H, W)
         
         # 2. Normalize direction vectors
-        geo_mask[:, 1:3] = self.normalize_direction(geo_mask[:, 1:3])[:, 1:3]
-        geo_mask[:, 4:6] = self.normalize_direction(geo_mask[:, 4:6])[:, 1:3]
+        # normalize_direction expects [conf, dx, dy] format with 3 channels
+        geo_mask[:, 1:3] = self.normalize_direction(geo_mask[:, :3])[:, 1:3]
+        geo_mask[:, 4:6] = self.normalize_direction(geo_mask[:, 3:])[:, 1:3]
         
         # 3. Parse ship and wake masks
         ship_mask = self.parse_mask(geo_mask[:, :3])

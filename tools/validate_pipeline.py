@@ -178,8 +178,15 @@ def test_forward_pass(model, dataloader, device, max_iter=3):
                 
                 # Forward pass
                 if hasattr(model, 'backbone') and hasattr(model.backbone, 'forward_with_intermediates'):
-                    outputs, intermediates = model.backbone.forward_with_intermediates(img)
-                    print(f"    ✓ Backbone forward with intermediates")
+                    result = model.backbone.forward_with_intermediates(img)
+                    # Handle return format: (outputs, intermediates) or (outputs, intermediates, gate_loss)
+                    if len(result) == 3:
+                        outputs, intermediates, gate_loss = result
+                        print(f"    ✓ Backbone forward with intermediates (gate_loss={gate_loss:.4f})")
+                    else:
+                        outputs, intermediates = result
+                        print(f"    ✓ Backbone forward with intermediates")
+                    
                     print(f"      - Output stages: {len(outputs)}")
                     for j, feat in enumerate(outputs):
                         print(f"      - Stage {j}: {feat.shape}")
