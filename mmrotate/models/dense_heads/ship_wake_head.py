@@ -20,7 +20,7 @@ from mmcv.runner import force_fp32
 from mmdet.core import multi_apply, reduce_mean
 from mmdet.core.anchor.point_generator import MlvlPointGenerator
 
-from ..builder import ROTATED_HEADS, build_loss
+from ..builder import ROTATED_HEADS, ROTATED_LOSSES, build_loss
 from ..utils import ORConv2d, RotationInvariantPooling
 from .rotated_anchor_head import RotatedAnchorHead
 
@@ -82,6 +82,12 @@ class WakeOBBHead(RotatedAnchorHead):
         self.stacked_convs = stacked_convs
         self.conv_cfg = conv_cfg
         self.norm_cfg = norm_cfg
+        
+        # Handle strides: if passed separately, merge into anchor_generator
+        if 'strides' in kwargs:
+            strides = kwargs.pop('strides')
+            anchor_generator = anchor_generator.copy()
+            anchor_generator['strides'] = strides
         
         super().__init__(
             num_classes=num_classes,
@@ -485,8 +491,13 @@ class ShipWakeDualHead(nn.Module):
     def __init__(self,
                  in_channels=256,
                  wake_head_cfg=None,
-                 ship_head_cfg=None):
+                 ship_head_cfg=None,
+                 train_cfg=None,
+                 test_cfg=None):
         super().__init__()
+        
+        self.train_cfg = train_cfg
+        self.test_cfg = test_cfg
         
         # Wake OBB head config
         wake_cfg = dict(
@@ -607,6 +618,7 @@ class ShipWakeDualHead(nn.Module):
         return combined_results
 
 
+@ROTATED_LOSSES.register_module()
 class CosineSimilarityLoss(nn.Module):
     """Cosine similarity loss for direction regression."""
     

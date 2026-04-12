@@ -81,10 +81,24 @@ class SWIMDataset(CustomDataset):
         data_infos = []
         img_ids = mmcv.list_from_file(ann_file)
         
+        print(f"[SWIMDataset] Loading annotations from: {ann_file}")
+        print(f"[SWIMDataset] Found {len(img_ids)} image IDs in list file")
+        print(f"[SWIMDataset] Image prefix: {self.img_prefix}")
+        print(f"[SWIMDataset] Image directory: {self.img_dir}")
+        
+        failed_count = 0
         for img_id in img_ids:
             data_info = self._load_single_image(img_id)
             if data_info is not None:
                 data_infos.append(data_info)
+            else:
+                failed_count += 1
+                if failed_count <= 3:  # Only print first 3 failures
+                    print(f"[SWIMDataset] Warning: Failed to load image: {img_id}")
+        
+        print(f"[SWIMDataset] Successfully loaded {len(data_infos)} samples")
+        if failed_count > 0:
+            print(f"[SWIMDataset] Warning: Failed to load {failed_count} samples")
         
         return data_infos
     
@@ -92,15 +106,15 @@ class SWIMDataset(CustomDataset):
         """Load annotations for a single image.
         
         Args:
-            img_id: Image ID (filename without extension)
+            img_id: Image ID (filename with or without extension)
             
         Returns:
             dict or None: Data info dict or None if loading fails
         """
         data_info = {}
         
-        # Image path
         img_name = f'{img_id}.png'
+        
         img_path = osp.join(self.img_prefix, self.img_dir, img_name)
         
         # Check if image exists
@@ -298,6 +312,11 @@ class SWIMDataset(CustomDataset):
                 has_ship = len(data_info['ann']['ship_points']) > 0
                 if has_wake or has_ship:
                     valid_inds.append(i)
+        
+        if len(valid_inds) != len(self.data_infos):
+            print(f"[SWIMDataset] Filtered {len(self.data_infos) - len(valid_inds)} "
+                  f"empty samples (filter_empty_gt={self.filter_empty_gt})")
+        
         return valid_inds
     
     def evaluate(self,
