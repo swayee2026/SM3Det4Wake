@@ -15,7 +15,9 @@
 
 # Dataset type - using SWIMDataset for dual annotation format
 dataset_type = 'SWIMDataset'
-data_root = 'data/SWIM_Dataset_1.0.0/'
+#TODO dataset dir
+#data_root = '/root/autodl-tmp/swim/SWIM_Dataset_1.0.0/'
+data_root = '/root/autodl-tmp/swim/tiny_swim/'
 
 # Image normalization (ImageNet stats)
 img_norm_cfg = dict(

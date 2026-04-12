@@ -67,6 +67,11 @@ class SWIMDataset(CustomDataset):
         self.img_dir = img_dir
         self.version = version
         
+        # Debug: print initialization parameters
+        print(f"[SWIMDataset.__init__] img_prefix={img_prefix}")
+        print(f"[SWIMDataset.__init__] img_dir={img_dir}")
+        print(f"[SWIMDataset.__init__] self.img_dir={self.img_dir}")
+        
         super().__init__(ann_file, pipeline, img_prefix=img_prefix, **kwargs)
     
     def load_annotations(self, ann_file):
@@ -106,19 +111,36 @@ class SWIMDataset(CustomDataset):
         """Load annotations for a single image.
         
         Args:
-            img_id: Image ID (filename with or without extension)
+            img_id: Image ID (filename without extension)
             
         Returns:
             dict or None: Data info dict or None if loading fails
         """
         data_info = {}
         
+        # Clean img_id - remove any whitespace or file extension
+        img_id = img_id.strip()
+        img_id = osp.splitext(img_id)[0]  # Remove extension if present
+        
         img_name = f'{img_id}.png'
         
-        img_path = osp.join(self.img_prefix, self.img_dir, img_name)
+        # Build image path
+        if self.img_dir:
+            img_path = osp.join(self.img_prefix, self.img_dir, img_name)
+        else:
+            img_path = osp.join(self.img_prefix, img_name)
         
         # Check if image exists
         if not osp.exists(img_path):
+            print(f"[SWIMDataset] Image not found: {img_path}")
+            print(f"  - img_prefix: {self.img_prefix}")
+            print(f"  - img_dir: {self.img_dir} (type: {type(self.img_dir)})")
+            print(f"  - img_name: {img_name}")
+            # Try to find file in alternative locations
+            alt_path1 = osp.join(self.img_prefix, 'PNGImages', img_name)
+            alt_path2 = osp.join(self.img_prefix, img_name)
+            print(f"  - Would alternative path 1 exist? {alt_path1}: {osp.exists(alt_path1)}")
+            print(f"  - Would alternative path 2 exist? {alt_path2}: {osp.exists(alt_path2)}")
             return None
         
         data_info['filename'] = img_name
