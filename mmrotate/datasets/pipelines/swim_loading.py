@@ -8,6 +8,7 @@ These transforms handle the dual annotation format of SWIM dataset:
 """
 
 import numpy as np
+#import torch
 from mmcv.parallel import DataContainer as DC
 from mmdet.datasets.pipelines import LoadAnnotations, to_tensor
 
@@ -137,9 +138,21 @@ class SWIMFormatBundle:
         # Format image
         if 'img' in results:
             img = results['img']
-            # Add dummy dimension for batch dimension
+            
+            # Convert tensor to numpy if needed
+            # if isinstance(img, torch.Tensor):
+            #     img = img.cpu().numpy()
+            
+            # Handle different input shapes
+            if len(img.shape) == 4:
+                # If there's an extra batch dimension (e.g., [1, H, W, 3]), squeeze it
+                if img.shape[0] == 1:
+                    img = img.squeeze(0)
+            
+            # Transpose from HWC to CHW format
             if len(img.shape) == 3:
                 img = np.ascontiguousarray(img.transpose(2, 0, 1))
+            
             results['img'] = DC(to_tensor(img), stack=True)
         
         # Format wake bboxes
@@ -178,6 +191,7 @@ class CollectSWIM:
     """Collect data from the loader relevant to the specific task.
     
     This keeps wake and ship annotations separate for dual-head training.
+    Also provides gt_bboxes/gt_labels aliases for compatibility.
     """
     
     def __init__(self,
@@ -209,6 +223,13 @@ class CollectSWIM:
         for key in self.keys:
             if key in results:
                 data[key] = results[key]
+        
+        # Add aliases for backward compatibility
+        # Map wake annotations to standard gt_bboxes/gt_labels
+        if 'gt_wake_bboxes' in results and 'gt_bboxes' not in data:
+            data['gt_bboxes'] = results['gt_wake_bboxes']
+        if 'gt_wake_labels' in results and 'gt_labels' not in data:
+            data['gt_labels'] = results['gt_wake_labels']
         
         return data
     

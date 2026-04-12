@@ -77,14 +77,26 @@ def test_data_loading(cfg, max_samples=2):
             
             print(f"\n  Sample {i+1}:")
             print(f"    - Image shape: {data['img'].data[0].shape}")
-            print(f"    - GT bboxes: {len(data['gt_bboxes'].data[0])} instances")
             
-            # Check bbox format
-            for j, bboxes in enumerate(data['gt_bboxes'].data[0]):
-                if len(bboxes) > 0:
-                    print(f"    - Bbox shape: {bboxes.shape}")
-                    print(f"    - Bbox sample: {bboxes[0]}")
-                    break
+            # Check for SWIM dataset specific keys
+            if 'gt_wake_bboxes' in data:
+                print(f"    - GT wake bboxes: {len(data['gt_wake_bboxes'].data[0])} instances")
+                for j, bboxes in enumerate(data['gt_wake_bboxes'].data[0]):
+                    if len(bboxes) > 0:
+                        print(f"    - Wake bbox shape: {bboxes.shape}")
+                        break
+            
+            if 'gt_ship_points' in data:
+                print(f"    - GT ship points: {len(data['gt_ship_points'].data[0])} instances")
+            
+            # Standard keys (for compatibility with other datasets)
+            if 'gt_bboxes' in data:
+                print(f"    - GT bboxes: {len(data['gt_bboxes'].data[0])} instances")
+                for j, bboxes in enumerate(data['gt_bboxes'].data[0]):
+                    if len(bboxes) > 0:
+                        print(f"    - Bbox shape: {bboxes.shape}")
+                        print(f"    - Bbox sample: {bboxes[0]}")
+                        break
         
         print("\n✓ Data loading test PASSED")
         return dataloader
@@ -214,22 +226,43 @@ def test_loss_computation(model, dataloader, device, max_iter=2):
             img = data['img'].data[0].to(device)
             img_metas = data['img_metas'].data[0]
             
-            # Handle ground truth data
-            gt_bboxes = [b.to(device) for b in data['gt_bboxes'].data[0]]
-            gt_labels = [l.to(device) for l in data['gt_labels'].data[0]]
-            
-            # Separate ship and wake annotations (if applicable)
-            gt_bboxes_dict = {
-                'ship': gt_bboxes,  # Placeholder
-                'wake': gt_bboxes
-            }
-            gt_labels_dict = {
-                'ship': gt_labels,
-                'wake': gt_labels
-            }
-            
-            print(f"    - GT boxes: {len(gt_bboxes)} batches")
-            print(f"    - GT labels: {len(gt_labels)} batches")
+            # Handle ground truth data (SWIM dataset format)
+            if 'gt_wake_bboxes' in data and 'gt_ship_points' in data:
+                # SWIM dataset format
+                gt_wake_bboxes = [b.to(device) for b in data['gt_wake_bboxes'].data[0]]
+                gt_wake_labels = [l.to(device) for l in data['gt_wake_labels'].data[0]]
+                gt_ship_points = [p.to(device) for p in data['gt_ship_points'].data[0]]
+                gt_ship_directions = [d.to(device) for d in data['gt_ship_directions'].data[0]]
+                gt_ship_labels = [l.to(device) for l in data['gt_ship_labels'].data[0]]
+                
+                gt_bboxes_dict = {
+                    'wake': gt_wake_bboxes,
+                    'ship_points': gt_ship_points,
+                    'ship_directions': gt_ship_directions
+                }
+                gt_labels_dict = {
+                    'wake': gt_wake_labels,
+                    'ship': gt_ship_labels
+                }
+                
+                print(f"    - GT wake boxes: {len(gt_wake_bboxes)} batches")
+                print(f"    - GT ship points: {len(gt_ship_points)} batches")
+            else:
+                # Standard format
+                gt_bboxes = [b.to(device) for b in data['gt_bboxes'].data[0]]
+                gt_labels = [l.to(device) for l in data['gt_labels'].data[0]]
+                
+                gt_bboxes_dict = {
+                    'ship': gt_bboxes,
+                    'wake': gt_bboxes
+                }
+                gt_labels_dict = {
+                    'ship': gt_labels,
+                    'wake': gt_labels
+                }
+                
+                print(f"    - GT boxes: {len(gt_bboxes)} batches")
+                print(f"    - GT labels: {len(gt_labels)} batches")
             
             # Forward pass with losses
             try:
@@ -284,11 +317,30 @@ def test_backward_pass(model, dataloader, device):
         # Prepare data
         img = data['img'].data[0].to(device)
         img_metas = data['img_metas'].data[0]
-        gt_bboxes = [b.to(device) for b in data['gt_bboxes'].data[0]]
-        gt_labels = [l.to(device) for l in data['gt_labels'].data[0]]
         
-        gt_bboxes_dict = {'ship': gt_bboxes, 'wake': gt_bboxes}
-        gt_labels_dict = {'ship': gt_labels, 'wake': gt_labels}
+        # Handle ground truth data (SWIM dataset format)
+        if 'gt_wake_bboxes' in data and 'gt_ship_points' in data:
+            gt_wake_bboxes = [b.to(device) for b in data['gt_wake_bboxes'].data[0]]
+            gt_wake_labels = [l.to(device) for l in data['gt_wake_labels'].data[0]]
+            gt_ship_points = [p.to(device) for p in data['gt_ship_points'].data[0]]
+            gt_ship_directions = [d.to(device) for d in data['gt_ship_directions'].data[0]]
+            gt_ship_labels = [l.to(device) for l in data['gt_ship_labels'].data[0]]
+            
+            gt_bboxes_dict = {
+                'wake': gt_wake_bboxes,
+                'ship_points': gt_ship_points,
+                'ship_directions': gt_ship_directions
+            }
+            gt_labels_dict = {
+                'wake': gt_wake_labels,
+                'ship': gt_ship_labels
+            }
+        else:
+            gt_bboxes = [b.to(device) for b in data['gt_bboxes'].data[0]]
+            gt_labels = [l.to(device) for l in data['gt_labels'].data[0]]
+            
+            gt_bboxes_dict = {'ship': gt_bboxes, 'wake': gt_bboxes}
+            gt_labels_dict = {'ship': gt_labels, 'wake': gt_labels}
         
         print("  Forward pass...")
         losses = model(
