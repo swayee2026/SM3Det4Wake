@@ -173,6 +173,11 @@ def train_detector(model,
 
     if cfg.resume_from:
         runner.resume(cfg.resume_from)
+        # Fix: Ensure optimizer state['step'] is on CPU for AdamW compatibility
+        # This handles the case where checkpoint was saved with CUDA tensors
+        for state in runner.optimizer.state.values():
+            if 'step' in state and isinstance(state['step'], torch.Tensor):
+                state['step'] = state['step'].cpu()
     elif cfg.load_from:
         runner.load_checkpoint(cfg.load_from)
     runner.run(data_loaders, cfg.workflow)

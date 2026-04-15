@@ -364,6 +364,7 @@ optimizer = dict(
     lr=base_lr,
     betas=(0.9, 0.999),
     weight_decay=weight_decay,
+    capturable=True,  # Fix for CUDA tensor step issue in PyTorch 2.0+
     paramwise_cfg=dict(
         custom_keys={
             "backbone": dict(lr_mult=backbone_lr_mult),
