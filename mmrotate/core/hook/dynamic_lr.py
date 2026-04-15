@@ -197,24 +197,23 @@ class DynamicLrUpdaterHook(LrUpdaterHook):
     def after_train_iter(self, runner: 'runner.BaseRunner'):
         cur_iter = runner.iter
         assert isinstance(self.warmup_iters, int)
-        if not self.by_epoch:
-            if self.warmup is None or cur_iter >= self.warmup_iters:
-                self.dynamic_lr = self.get_dynamic_lr(runner)
-                self._set_lr(runner, self.dynamic_lr)
-            else:
-                warmup_lr = self.get_warmup_lr(cur_iter)
-                if hasattr(runner, "outputs"):
-                    losses = runner.outputs['log_vars'] 
-                    cur_losses = {'loss':[]}
-                    for i, (k, loss) in enumerate(losses.items()):
-                        if k not in self.reweight_losses:
-                            continue
-                        elif isinstance(loss, list):
-                            loss = sum(loss)
-                        cur_losses['loss'].append(loss)
-                    cur_losses['loss'] = torch.tensor(cur_losses['loss']) 
-                    for i, loss in enumerate(cur_losses['loss']):
-                        self.history_ema_loss[i].update(loss.item()) 
-                self._set_lr(runner, warmup_lr)
-        elif self.by_epoch:
-            assert False
+        # DSO: Update LR dynamically based on loss after each iteration
+        # Works for both EpochBasedRunner and IterBasedRunner
+        if self.warmup is None or cur_iter >= self.warmup_iters:
+            self.dynamic_lr = self.get_dynamic_lr(runner)
+            self._set_lr(runner, self.dynamic_lr)
+        else:
+            warmup_lr = self.get_warmup_lr(cur_iter)
+            if hasattr(runner, "outputs"):
+                losses = runner.outputs['log_vars'] 
+                cur_losses = {'loss':[]}
+                for i, (k, loss) in enumerate(losses.items()):
+                    if k not in self.reweight_losses:
+                        continue
+                    elif isinstance(loss, list):
+                        loss = sum(loss)
+                    cur_losses['loss'].append(loss)
+                cur_losses['loss'] = torch.tensor(cur_losses['loss']) 
+                for i, loss in enumerate(cur_losses['loss']):
+                    self.history_ema_loss[i].update(loss.item()) 
+            self._set_lr(runner, warmup_lr)
