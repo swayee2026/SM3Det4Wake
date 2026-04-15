@@ -105,6 +105,10 @@ class LoadSWIMAnnotations(LoadAnnotations):
         results['mask_fields'] = []
         results['seg_fields'] = []
         
+        # Skip annotation loading during testing if ann_info is not available
+        if 'ann_info' not in results:
+            return results
+        
         # Load wake annotations
         if self.with_wake_bbox:
             results = self._load_wake_bboxes(results)
