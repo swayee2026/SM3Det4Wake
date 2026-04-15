@@ -493,7 +493,6 @@ class ShipPointHead(nn.Module):
             pred_labels = torch.ones(len(pred_bboxes), dtype=torch.long, device=pred_bboxes.device)
             
             if rescale:
-                import torch
                 from mmcv.parallel import DataContainer
                 scale_factor = img_metas[img_id].get('scale_factor', 1.0)
                 # Unwrap DataContainer if needed
