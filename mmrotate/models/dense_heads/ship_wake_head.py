@@ -676,12 +676,12 @@ class ShipWakeDualHead(nn.Module):
             if len(wake_labels) > 0:
                 wake_labels = wake_labels  # Already 1 (wake)
             
-            # Ensure all tensors are on the same device (use wake_bboxes device as reference)
-            target_device = wake_bboxes.device
-            ship_bboxes = ship_bboxes.to(target_device)
-            ship_labels = ship_labels.to(target_device)
-            ship_scores = ship_scores.to(target_device)
-            # wake_* tensors should already be on target_device
+            # Ensure all tensors are on the same device (use CUDA if available)
+            target_device = ship_bboxes.device  # ship_bboxes is guaranteed to be on the right device
+            wake_bboxes = wake_bboxes.to(target_device)
+            wake_labels = wake_labels.to(target_device)
+            wake_scores = wake_scores.to(target_device)
+            # ship_* tensors are already on target_device
             
             # Concatenate
             all_bboxes = torch.cat([ship_bboxes, wake_bboxes], dim=0)
