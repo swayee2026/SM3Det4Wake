@@ -500,6 +500,9 @@ class ShipPointHead(nn.Module):
                     scale_factor = scale_factor.data
                 if isinstance(scale_factor, (list, tuple)):
                     scale_factor = scale_factor[0]
+                # Convert tensor to Python scalar to avoid device mismatch
+                if isinstance(scale_factor, torch.Tensor):
+                    scale_factor = scale_factor.item()
                 pred_bboxes[:, :4] /= scale_factor
             
             result_list.append((pred_bboxes, pred_labels, confs))
