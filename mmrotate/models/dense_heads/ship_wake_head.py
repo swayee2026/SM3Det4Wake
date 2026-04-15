@@ -48,7 +48,7 @@ class WakeOBBHead(RotatedAnchorHead):
                  conv_cfg=None,
                  norm_cfg=dict(type='GN', num_groups=32, requires_grad=True),
                  anchor_generator=dict(
-                     type='AnchorGenerator',
+                     type='RotatedAnchorGenerator',
                      octave_base_scale=4,
                      scales_per_octave=3,
                      ratios=[0.5, 1.0, 2.0],
