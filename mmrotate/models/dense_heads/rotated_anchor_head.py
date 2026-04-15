@@ -595,6 +595,13 @@ class RotatedAnchorHead(BaseDenseHead):
         mlvl_anchors = self.anchor_generator.grid_priors(
             featmap_sizes, device=device)
 
+        # Helper to unwrap DataContainer
+        def unwrap(x):
+            from mmcv.parallel import DataContainer
+            if isinstance(x, DataContainer):
+                return x.data
+            return x
+        
         result_list = []
         for img_id, _ in enumerate(img_metas):
             cls_score_list = [
@@ -603,8 +610,8 @@ class RotatedAnchorHead(BaseDenseHead):
             bbox_pred_list = [
                 bbox_preds[i][img_id].detach() for i in range(num_levels)
             ]
-            img_shape = img_metas[img_id]['img_shape']
-            scale_factor = img_metas[img_id]['scale_factor']
+            img_shape = unwrap(img_metas[img_id]['img_shape'])
+            scale_factor = unwrap(img_metas[img_id]['scale_factor'])
             if with_nms:
                 # some heads don't support with_nms argument
                 proposals = self._get_bboxes_single(cls_score_list,
