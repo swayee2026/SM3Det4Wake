@@ -15,10 +15,12 @@ Usage:
 """
 
 import argparse
+import logging
 import os
 import sys
 import warnings
 from pathlib import Path
+from datetime import datetime
 
 import torch
 import torch.nn as nn
@@ -32,6 +34,36 @@ from mmcv.runner import load_checkpoint
 from mmrotate.models import build_detector
 from mmrotate.datasets import build_dataset, build_dataloader
 from mmrotate.utils.visualization import WakeVisualizer, visualize_backbone_intermediates
+
+
+# =============================================================================
+# Logging Setup
+# =============================================================================
+
+def setup_logging(work_dir='./work_dirs/validate'):
+    """Setup logging to both file and console."""
+    # Create log directory
+    log_dir = Path(work_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generate log filename with timestamp
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    log_file = log_dir / f'validate_{timestamp}.log'
+    
+    # Configure logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+            logging.StreamHandler(sys.stdout)
+        ]
+    )
+    
+    logger = logging.getLogger('validate_pipeline')
+    logger.info(f"Logging initialized. Log file: {log_file}")
+    
+    return logger
 
 
 def parse_args():
@@ -49,17 +81,19 @@ def parse_args():
     return args
 
 
-def test_data_loading(cfg, max_samples=1):
+def test_data_loading(cfg, logger=None, max_samples=1):
     """Test data loading and preprocessing."""
-    print("\n" + "="*60)
-    print("TEST 1: Data Loading")
-    print("="*60)
+    log = logger.info if logger else print
+    
+    log("\n" + "="*60)
+    log("TEST 1: Data Loading")
+    log("="*60)
     
     try:
         # Build dataset
         dataset = build_dataset(cfg.data.train)
-        print(f"✓ Dataset built successfully")
-        print(f"  - Number of samples: {len(dataset)}")
+        log(f"✓ Dataset built successfully")
+        log(f"  - Number of samples: {len(dataset)}")
         
         # Build dataloader
         dataloader = build_dataloader(
@@ -108,11 +142,13 @@ def test_data_loading(cfg, max_samples=1):
         return None
 
 
-def test_model_construction(cfg, device):
+def test_model_construction(cfg, device, logger=None):
     """Test model construction and initialization."""
-    print("\n" + "="*60)
-    print("TEST 2: Model Construction")
-    print("="*60)
+    log = logger.info if logger else print
+    
+    log("\n" + "="*60)
+    log("TEST 2: Model Construction")
+    log("="*60)
     
     try:
         # Build model
@@ -156,11 +192,13 @@ def test_model_construction(cfg, device):
         return None
 
 
-def test_forward_pass(model, dataloader, device, max_iter=2):
+def test_forward_pass(model, dataloader, device, max_iter=2, logger=None):
     """Test model forward pass."""
-    print("\n" + "="*60)
-    print("TEST 3: Forward Pass")
-    print("="*60)
+    log = logger.info if logger else print
+    
+    log("\n" + "="*60)
+    log("TEST 3: Forward Pass")
+    log("="*60)
     
     try:
         model.eval()
@@ -214,11 +252,13 @@ def test_forward_pass(model, dataloader, device, max_iter=2):
         return False
 
 
-def test_loss_computation(model, dataloader, device, max_iter=1):
+def test_loss_computation(model, dataloader, device, max_iter=1, logger=None):
     """Test loss computation."""
-    print("\n" + "="*60)
-    print("TEST 4: Loss Computation")
-    print("="*60)
+    log = logger.info if logger else print
+    
+    log("\n" + "="*60)
+    log("TEST 4: Loss Computation")
+    log("="*60)
     
     try:
         model.train()
@@ -316,11 +356,13 @@ def test_loss_computation(model, dataloader, device, max_iter=1):
         return False
 
 
-def test_backward_pass(model, dataloader, device):
+def test_backward_pass(model, dataloader, device, logger=None):
     """Test backward pass and gradient flow."""
-    print("\n" + "="*60)
-    print("TEST 5: Backward Pass")
-    print("="*60)
+    log = logger.info if logger else print
+    
+    log("\n" + "="*60)
+    log("TEST 5: Backward Pass")
+    log("="*60)
     
     try:
         model.train()
@@ -413,11 +455,13 @@ def test_backward_pass(model, dataloader, device):
         return False
 
 
-def test_visualization(model, dataloader, device, save_dir):
+def test_visualization(model, dataloader, device, save_dir, logger=None):
     """Test visualization outputs."""
-    print("\n" + "="*60)
-    print("TEST 6: Visualization")
-    print("="*60)
+    log = logger.info if logger else print
+    
+    log("\n" + "="*60)
+    log("TEST 6: Visualization")
+    log("="*60)
     
     #this part has been varified already
     print("\n✓ Visualization test PASSED")
@@ -469,20 +513,32 @@ def test_visualization(model, dataloader, device, save_dir):
 def main():
     args = parse_args()
     
+    # Setup logging
+    logger = setup_logging(args.work_dir)
+    
     # Create directories
     os.makedirs(args.work_dir, exist_ok=True)
     os.makedirs(args.vis_dir, exist_ok=True)
+    logger.info(f"Work directory: {args.work_dir}")
+    logger.info(f"Visualization directory: {args.vis_dir}")
     
     # Load config
-    print("\n" + "="*60)
-    print("Loading Configuration")
-    print("="*60)
+    logger.info("="*60)
+    logger.info("Loading Configuration")
+    logger.info("="*60)
     cfg = Config.fromfile(args.config)
-    print(f"✓ Config loaded: {args.config}")
+    logger.info(f"✓ Config loaded: {args.config}")
     
     # Set device
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
-    print(f"✓ Using device: {device}")
+    logger.info(f"✓ Using device: {device}")
+    
+    # Print config summary to log
+    logger.info(f"\nConfig Summary:")
+    logger.info(f"  - Model type: {cfg.model.type}")
+    logger.info(f"  - Backbone: {cfg.model.backbone.type}")
+    logger.info(f"  - Dataset type: {cfg.data.train.type}")
+    logger.info(f"  - Samples per GPU: {cfg.data.samples_per_gpu}")
     
     # Run tests
     results = {
@@ -495,36 +551,36 @@ def main():
     }
     
     # Test 1: Data loading
-    dataloader = test_data_loading(cfg)
+    dataloader = test_data_loading(cfg, logger)
     results['data_loading'] = dataloader is not None
     
     if not results['data_loading']:
-        print("\n" + "="*60)
-        print("VALIDATION STOPPED: Data loading failed")
-        print("="*60)
+        logger.error("="*60)
+        logger.error("VALIDATION STOPPED: Data loading failed")
+        logger.error("="*60)
         return
     
     # Test 2: Model construction
-    model = test_model_construction(cfg, device)
+    model = test_model_construction(cfg, device, logger)
     results['model_construction'] = model is not None
     
     if not results['model_construction']:
-        print("\n" + "="*60)
-        print("VALIDATION STOPPED: Model construction failed")
-        print("="*60)
+        logger.error("="*60)
+        logger.error("VALIDATION STOPPED: Model construction failed")
+        logger.error("="*60)
         return
     
     # Test 3: Forward pass
-    results['forward_pass'] = test_forward_pass(model, dataloader, device, args.max_iter)
+    results['forward_pass'] = test_forward_pass(model, dataloader, device, args.max_iter, logger)
     
     # Test 4: Loss computation
-    results['loss_computation'] = test_loss_computation(model, dataloader, device, args.max_iter)
+    results['loss_computation'] = test_loss_computation(model, dataloader, device, args.max_iter, logger)
     
     # Test 5: Backward pass
-    results['backward_pass'] = test_backward_pass(model, dataloader, device)
+    results['backward_pass'] = test_backward_pass(model, dataloader, device, logger)
     
     # Test 6: Visualization
-    results['visualization'] = test_visualization(model, dataloader, device, args.vis_dir)
+    results['visualization'] = test_visualization(model, dataloader, device, args.vis_dir, logger)
     
     # Summary
     print("\n" + "="*60)

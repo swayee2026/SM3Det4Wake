@@ -388,8 +388,8 @@ class ShipPointHead(nn.Module):
             pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, 2)
             for pred in direction_preds], dim=1).reshape(-1, 2)
         flatten_conf_preds = torch.cat([
-            pred.permute(0, 2, 3, 1).reshape(num_imgs, -1)
-            for pred in conf_preds], dim=1).reshape(-1)
+            pred.permute(0, 2, 3, 1).reshape(num_imgs, -1, 1)
+            for pred in conf_preds], dim=1).reshape(-1, 1)
         
         num_pos = (labels > 0).sum().item()
         num_total = max(num_pos, 1)
