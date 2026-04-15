@@ -43,8 +43,10 @@ class GeometricMaskGenerator(nn.Module):
             mask: (B, 6, H, W) geometric mask
         """
         mask = self.conv(x)
-        # Apply sigmoid to confidence channels (0, 3)
-        mask[:, [0, 3]] = torch.sigmoid(mask[:, [0, 3]])
+        # Apply sigmoid to confidence channels (0, 3) - avoid inplace
+        sigmoid_channels = torch.sigmoid(mask[:, [0, 3]])
+        mask = torch.cat([sigmoid_channels[:, 0:1], mask[:, 1:3], 
+                          sigmoid_channels[:, 1:2], mask[:, 4:]], dim=1)
         return mask
 
 
@@ -70,11 +72,10 @@ class GeometricPropagator(nn.Module):
         # Upsample previous mask to current size
         prev_up = F.interpolate(prev_mask, size=(H, W), mode='bilinear', align_corners=False)
         
-        # Re-normalize direction vectors after interpolation
+        # Re-normalize direction vectors after interpolation - avoid inplace
         dx, dy = prev_up[:, 1:2], prev_up[:, 2:3]
         norm = torch.sqrt(dx**2 + dy**2 + self.eps)
-        prev_up[:, 1:2] = dx / norm
-        prev_up[:, 2:3] = dy / norm
+        prev_up = torch.cat([prev_up[:, 0:1], dx / norm, dy / norm], dim=1)
         
         # Temporal fusion with EMA-like weighting
         # Higher confidence in current layer gets more weight
@@ -303,13 +304,12 @@ class GeometricMAMG(BaseModule):
             mask: (B, 3, H, W) with channels [conf, dx, dy]
             
         Returns:
-            normalized mask
+            normalized mask (avoid inplace operations)
         """
         dx, dy = mask[:, 1:2], mask[:, 2:3]
         norm = torch.sqrt(dx**2 + dy**2 + 1e-6)
-        mask[:, 1:2] = dx / norm
-        mask[:, 2:3] = dy / norm
-        return mask
+        # Avoid inplace: create new tensor instead of modifying mask
+        return torch.cat([mask[:, 0:1], dx / norm, dy / norm], dim=1)
     
     def forward(self, feat, prev_geo_mask=None):
         """Forward pass.
@@ -328,10 +328,17 @@ class GeometricMAMG(BaseModule):
         # 1. Generate geometric mask
         geo_mask = self.mask_generator(feat)  # (B, 6, H, W)
         
-        # 2. Normalize direction vectors
+        # 2. Normalize direction vectors - avoid inplace operations
         # normalize_direction expects [conf, dx, dy] format with 3 channels
-        geo_mask[:, 1:3] = self.normalize_direction(geo_mask[:, :3])[:, 1:3]
-        geo_mask[:, 4:6] = self.normalize_direction(geo_mask[:, 3:])[:, 1:3]
+        ship_normalized = self.normalize_direction(geo_mask[:, :3])  # (B, 3, H, W)
+        wake_normalized = self.normalize_direction(geo_mask[:, 3:])  # (B, 3, H, W)
+        # Reconstruct geo_mask without inplace
+        geo_mask = torch.cat([
+            geo_mask[:, 0:1],    # ship conf
+            ship_normalized[:, 1:3],  # ship dx, dy (normalized)
+            geo_mask[:, 3:4],    # wake conf
+            wake_normalized[:, 1:3]   # wake dx, dy (normalized)
+        ], dim=1)
         
         # 3. Parse ship and wake masks
         ship_mask = self.parse_mask(geo_mask[:, :3])

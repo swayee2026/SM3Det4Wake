@@ -77,6 +77,8 @@ def parse_args():
                        help='device used for validation')
     parser.add_argument('--max-iter', type=int, default=2,
                        help='maximum iterations to run')
+    parser.add_argument('--skip-vis', type=bool, default=False,
+                       help='if skip part 6 visualization')
     args = parser.parse_args()
     return args
 
@@ -441,7 +443,10 @@ def test_backward_pass(model, dataloader, device, logger=None):
                 total_loss += sum(loss_value)
         
         print(f"  Loss: {total_loss.item():.4f}, Backward... ", end="")
-        total_loss.backward()
+        
+        # Enable anomaly detection to find inplace operations
+        with torch.autograd.set_detect_anomaly(True):
+            total_loss.backward()
         print("✓")
         
         # Check gradients - detail to log
@@ -469,7 +474,7 @@ def test_backward_pass(model, dataloader, device, logger=None):
         return False
 
 
-def test_visualization(model, dataloader, device, save_dir, logger=None):
+def test_visualization(model, dataloader, device, save_dir, logger=None,if_skip:bool=False):
     """Test visualization outputs."""
     log_detail = logger.info if logger else lambda x: None
     
@@ -478,8 +483,9 @@ def test_visualization(model, dataloader, device, save_dir, logger=None):
     print("="*60)
     
     # This part has been verified already - skip detailed visualization
-    print("✓ Visualization test PASSED (skipped)")
-    return True
+    if if_skip==True:
+        print("O Visualization test SKIPPED ")
+        return True
 
     # Detailed visualization code (kept for future use)
     try:
@@ -597,7 +603,7 @@ def main():
     results['backward_pass'] = test_backward_pass(model, dataloader, device, logger)
     
     # Test 6: Visualization
-    results['visualization'] = test_visualization(model, dataloader, device, args.vis_dir, logger)
+    results['visualization'] = test_visualization(model, dataloader, device, args.vis_dir, logger,if_skip=args.skip_vis)
     
     # Summary
     print("\n" + "="*60)

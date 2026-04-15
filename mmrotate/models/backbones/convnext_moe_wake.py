@@ -148,9 +148,13 @@ class ConvNeXt_moe_wake(ConvNeXt_moe_MultiInput):
                     prev_geo_mask = nn.functional.interpolate(
                         prev_geo_mask, size=(H, W), mode='bilinear', align_corners=False
                     )
-                    # Renormalize direction vectors after interpolation
-                    prev_geo_mask[:, 1:3] = self._normalize_direction(prev_geo_mask[:, 1:3])
-                    prev_geo_mask[:, 4:6] = self._normalize_direction(prev_geo_mask[:, 4:6])
+                    # Renormalize direction vectors after interpolation - avoid inplace
+                    ship_dir_norm = self._normalize_direction(prev_geo_mask[:, 1:3])
+                    wake_dir_norm = self._normalize_direction(prev_geo_mask[:, 4:6])
+                    prev_geo_mask = torch.cat([
+                        prev_geo_mask[:, 0:1], ship_dir_norm,
+                        prev_geo_mask[:, 3:4], wake_dir_norm
+                    ], dim=1)
                 
                 # Apply mask guidance
                 x = x * (1 + 0.1 * (prev_geo_mask[:, 0:1] + prev_geo_mask[:, 3:4]))
