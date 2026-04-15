@@ -293,6 +293,9 @@ git pull
 --dir /root/autodl-tmp/swim/tiny_swim/PNGImages
 --dir /root/autodl-tmp/swim/tiny_swim/ImageSets
 
+# validate pipeline
+python tools/validate_pipeline.py configs/ShipWake/shipwake_convnext_t_debug.py
+
 ```
 
 ### 数据准备

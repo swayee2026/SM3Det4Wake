@@ -231,8 +231,8 @@ class BCConvexGIoULossFuction(Function):
         smooth_loss_weight = torch.exp((-1 / 4) * target_aspect)
         #TODO edit during debug for CPU mode
         loss = \
-            smooth_loss_weight * (diff_mean_loss.reshape(-1, 1) +
-                                  diff_corners_loss.reshape(-1, 1)) + \
+            smooth_loss_weight * (diff_mean_loss.reshape(-1, 1).cuda() +
+                                  diff_corners_loss.reshape(-1, 1).cuda()) + \
             1 - (1 - 2 * smooth_loss_weight) * convex_gious
 
         if weight is not None:
