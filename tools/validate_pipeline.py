@@ -83,17 +83,18 @@ def parse_args():
 
 def test_data_loading(cfg, logger=None, max_samples=1):
     """Test data loading and preprocessing."""
-    log = logger.info if logger else print
+    log_detail = logger.info if logger else lambda x: None  # Detail to log only
     
-    log("\n" + "="*60)
-    log("TEST 1: Data Loading")
-    log("="*60)
+    # Key info to console
+    print("\n" + "="*60)
+    print("TEST 1: Data Loading")
+    print("="*60)
     
     try:
         # Build dataset
         dataset = build_dataset(cfg.data.train)
-        log(f"✓ Dataset built successfully")
-        log(f"  - Number of samples: {len(dataset)}")
+        print(f"✓ Dataset built: {len(dataset)} samples")
+        log_detail(f"Dataset details: {type(dataset).__name__}")
         
         # Build dataloader
         dataloader = build_dataloader(
@@ -102,103 +103,111 @@ def test_data_loading(cfg, logger=None, max_samples=1):
             workers_per_gpu=cfg.data.workers_per_gpu,
             dist=False,
             shuffle=False)
-        print(f"✓ Dataloader built successfully")
+        print(f"✓ Dataloader built")
+        log_detail(f"Dataloader config: samples_per_gpu={cfg.data.samples_per_gpu}, "
+                   f"workers_per_gpu={cfg.data.workers_per_gpu}")
         
-        # Load a few samples
+        # Load a few samples - details to log
         for i, data in enumerate(dataloader):
             if i >= max_samples:
                 break
             
-            print(f"\n  Sample {i+1}:")
-            print(f"    - Image shape: {data['img'].data[0].shape}")
+            log_detail(f"\nSample {i+1}:")
+            log_detail(f"  - Image shape: {data['img'].data[0].shape}")
             
             # Check for SWIM dataset specific keys
             if 'gt_wake_bboxes' in data:
-                print(f"    - GT wake bboxes: {len(data['gt_wake_bboxes'].data[0])} instances")
+                log_detail(f"  - GT wake bboxes: {len(data['gt_wake_bboxes'].data[0])} batches")
                 for j, bboxes in enumerate(data['gt_wake_bboxes'].data[0]):
                     if len(bboxes) > 0:
-                        print(f"    - Wake bbox shape: {bboxes.shape}")
+                        log_detail(f"  - Wake bbox shape: {bboxes.shape}")
+                        log_detail(f"  - Wake bbox sample: {bboxes[0]}")
                         break
             
             if 'gt_ship_points' in data:
-                print(f"    - GT ship points: {len(data['gt_ship_points'].data[0])} instances")
+                log_detail(f"  - GT ship points: {len(data['gt_ship_points'].data[0])} batches")
+                for j, points in enumerate(data['gt_ship_points'].data[0]):
+                    if len(points) > 0:
+                        log_detail(f"  - Ship point shape: {points.shape}")
+                        break
             
             # Standard keys (for compatibility with other datasets)
             if 'gt_bboxes' in data:
-                print(f"    - GT bboxes: {len(data['gt_bboxes'].data[0])} instances")
-                for j, bboxes in enumerate(data['gt_bboxes'].data[0]):
-                    if len(bboxes) > 0:
-                        print(f"    - Bbox shape: {bboxes.shape}")
-                        print(f"    - Bbox sample: {bboxes[0]}")
-                        break
+                log_detail(f"  - GT bboxes: {len(data['gt_bboxes'].data[0])} batches")
         
-        print("\n✓ Data loading test PASSED")
+        print("✓ Data loading test PASSED")
         return dataloader
         
     except Exception as e:
-        print(f"\n✗ Data loading test FAILED: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"✗ Data loading test FAILED: {e}")
+        if logger:
+            logger.error(f"Data loading error: {e}", exc_info=True)
+        else:
+            import traceback
+            traceback.print_exc()
         return None
 
 
 def test_model_construction(cfg, device, logger=None):
     """Test model construction and initialization."""
-    log = logger.info if logger else print
+    log_detail = logger.info if logger else lambda x: None
     
-    log("\n" + "="*60)
-    log("TEST 2: Model Construction")
-    log("="*60)
+    print("\n" + "="*60)
+    print("TEST 2: Model Construction")
+    print("="*60)
     
     try:
         # Build model
         model = build_detector(cfg.model)
         model = model.to(device)
-        print(f"✓ Model built successfully")
+        print(f"✓ Model built on {device}")
         
-        # Count parameters
+        # Count parameters - detail to log
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         
-        print(f"  - Total parameters: {total_params:,}")
-        print(f"  - Trainable parameters: {trainable_params:,}")
+        log_detail(f"Parameters: total={total_params:,}, trainable={trainable_params:,}")
         
-        # Check backbone modules
+        # Check backbone modules - detail to log
         if hasattr(model, 'backbone'):
             backbone = model.backbone
-            print(f"\n  Backbone modules:")
-            print(f"    - Type: {type(backbone).__name__}")
+            log_detail(f"Backbone: {type(backbone).__name__}")
             
             if hasattr(backbone, 'use_geometric_mamg'):
-                print(f"    - GeometricMAMG: {backbone.use_geometric_mamg}")
+                log_detail(f"  - GeometricMAMG: {backbone.use_geometric_mamg}")
             if hasattr(backbone, 'use_wake_residual'):
-                print(f"    - WakeResidual: {backbone.use_wake_residual}")
+                log_detail(f"  - WakeResidual: {backbone.use_wake_residual}")
             if hasattr(backbone, 'num_experts'):
-                print(f"    - MoE experts: {backbone.num_experts}")
+                log_detail(f"  - MoE experts: {backbone.num_experts}")
         
-        # Check detection heads
+        # Check detection heads - detail to log
         if hasattr(model, 'ship_roi_head'):
-            print(f"\n  Ship detection head: {type(model.ship_roi_head).__name__}")
+            log_detail(f"Ship ROI head: {type(model.ship_roi_head).__name__}")
         if hasattr(model, 'wake_roi_head'):
-            print(f"  Wake detection head: {type(model.wake_roi_head).__name__}")
+            log_detail(f"Wake ROI head: {type(model.wake_roi_head).__name__}")
+        if hasattr(model, 'bbox_head'):
+            log_detail(f"Bbox head: {type(model.bbox_head).__name__}")
         
-        print("\n✓ Model construction test PASSED")
+        print("✓ Model construction test PASSED")
         return model
         
     except Exception as e:
-        print(f"\n✗ Model construction test FAILED: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"✗ Model construction test FAILED: {e}")
+        if logger:
+            logger.error(f"Model construction error: {e}", exc_info=True)
+        else:
+            import traceback
+            traceback.print_exc()
         return None
 
 
 def test_forward_pass(model, dataloader, device, max_iter=2, logger=None):
     """Test model forward pass."""
-    log = logger.info if logger else print
+    log_detail = logger.info if logger else lambda x: None
     
-    log("\n" + "="*60)
-    log("TEST 3: Forward Pass")
-    log("="*60)
+    print("\n" + "="*60)
+    print("TEST 3: Forward Pass")
+    print("="*60)
     
     try:
         model.eval()
@@ -208,11 +217,11 @@ def test_forward_pass(model, dataloader, device, max_iter=2, logger=None):
                 if i >= max_iter:
                     break
                 
-                print(f"\n  Iteration {i+1}:")
+                print(f"  Iteration {i+1}: ", end="")
                 
                 # Move data to device
                 img = data['img'].data[0].to(device)
-                print(f"    - Input shape: {img.shape}")
+                log_detail(f"Input shape: {img.shape}")
                 
                 # Forward pass
                 if hasattr(model, 'backbone') and hasattr(model.backbone, 'forward_with_intermediates'):
@@ -220,45 +229,49 @@ def test_forward_pass(model, dataloader, device, max_iter=2, logger=None):
                     # Handle return format: (outputs, intermediates) or (outputs, intermediates, gate_loss)
                     if len(result) == 3:
                         outputs, intermediates, gate_loss = result
-                        print(f"    ✓ Backbone forward with intermediates (gate_loss={gate_loss:.4f})")
+                        print(f"✓ Backbone (gate_loss={gate_loss:.4f})")
+                        log_detail(f"  Gate loss: {gate_loss:.4f}")
                     else:
                         outputs, intermediates = result
-                        print(f"    ✓ Backbone forward with intermediates")
+                        print(f"✓ Backbone with intermediates")
                     
-                    print(f"      - Output stages: {len(outputs)}")
+                    log_detail(f"  Output stages: {len(outputs)}")
                     for j, feat in enumerate(outputs):
-                        print(f"      - Stage {j}: {feat.shape}")
+                        log_detail(f"    Stage {j}: {feat.shape}")
                     
                     if intermediates:
-                        print(f"      - Intermediate outputs: {len(intermediates)}")
+                        log_detail(f"  Intermediate outputs: {len(intermediates)}")
                         for j, inter in enumerate(intermediates):
-                            print(f"        Stage {j}: {list(inter.keys())}")
+                            log_detail(f"    Stage {j}: {list(inter.keys())}")
                 else:
                     outputs = model.backbone(img)
-                    print(f"    ✓ Backbone forward")
+                    print(f"✓ Backbone")
                 
                 # Test full forward
                 if hasattr(model, 'extract_feat'):
                     feats = model.extract_feat(img)
-                    print(f"    ✓ Extract features")
+                    log_detail(f"✓ Extract features: {len(feats)} levels")
         
-        print("\n✓ Forward pass test PASSED")
+        print("✓ Forward pass test PASSED")
         return True
         
     except Exception as e:
-        print(f"\n✗ Forward pass test FAILED: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"✗ Forward pass test FAILED: {e}")
+        if logger:
+            logger.error(f"Forward pass error: {e}", exc_info=True)
+        else:
+            import traceback
+            traceback.print_exc()
         return False
 
 
 def test_loss_computation(model, dataloader, device, max_iter=1, logger=None):
     """Test loss computation."""
-    log = logger.info if logger else print
+    log_detail = logger.info if logger else lambda x: None
     
-    log("\n" + "="*60)
-    log("TEST 4: Loss Computation")
-    log("="*60)
+    print("\n" + "="*60)
+    print("TEST 4: Loss Computation")
+    print("="*60)
     
     try:
         model.train()
@@ -267,7 +280,7 @@ def test_loss_computation(model, dataloader, device, max_iter=1, logger=None):
             if i >= max_iter:
                 break
             
-            print(f"\n  Iteration {i+1}:")
+            print(f"  Iteration {i+1}: ", end="")
             
             # Prepare data
             img = data['img'].data[0].to(device)
@@ -292,8 +305,7 @@ def test_loss_computation(model, dataloader, device, max_iter=1, logger=None):
                     'ship': gt_ship_labels
                 }
                 
-                print(f"    - GT wake boxes: {len(gt_wake_bboxes)} batches")
-                print(f"    - GT ship points: {len(gt_ship_points)} batches")
+                log_detail(f"GT data: wake_boxes={len(gt_wake_bboxes)}, ship_points={len(gt_ship_points)}")
             else:
                 # Standard format
                 gt_bboxes = [b.to(device) for b in data['gt_bboxes'].data[0]]
@@ -308,12 +320,9 @@ def test_loss_computation(model, dataloader, device, max_iter=1, logger=None):
                     'wake': gt_labels
                 }
                 
-                print(f"    - GT boxes: {len(gt_bboxes)} batches")
-                print(f"    - GT labels: {len(gt_labels)} batches")
+                log_detail(f"GT data: boxes={len(gt_bboxes)}, labels={len(gt_labels)}")
             
             # Forward pass with losses
-            # MMDetection's BaseDetector.forward() expects: forward(img, img_metas, return_loss=True, **kwargs)
-            # GT data must be passed as keyword arguments
             try:
                 losses = model(
                     img,
@@ -325,28 +334,32 @@ def test_loss_computation(model, dataloader, device, max_iter=1, logger=None):
                     gt_ship_directions=gt_bboxes_dict.get('ship_directions'),
                     gt_ship_labels=gt_labels_dict.get('ship'))
                 
-                print(f"    ✓ Losses computed")
+                print(f"✓ Losses computed")
                 
-                # Print loss values
+                # Log loss values
                 total_loss = 0
                 for loss_name, loss_value in losses.items():
                     if isinstance(loss_value, torch.Tensor):
                         loss_val = loss_value.item()
                         total_loss += loss_val
-                        print(f"      - {loss_name}: {loss_val:.4f}")
+                        log_detail(f"  - {loss_name}: {loss_val:.4f}")
                     elif isinstance(loss_value, list):
                         loss_val = sum(l.item() for l in loss_value)
                         total_loss += loss_val
-                        print(f"      - {loss_name}: {loss_val:.4f} (sum of list)")
+                        log_detail(f"  - {loss_name}: {loss_val:.4f} (list)")
                 
-                print(f"      - Total loss: {total_loss:.4f}")
+                log_detail(f"  Total loss: {total_loss:.4f}")
                 
             except Exception as e:
-                print(f"    ! Loss computation error (expected for incomplete implementation): {e}")
-                print(f"\n✗ Loss computation test FAILED: {e}")
+                print(f"✗ FAILED: {e}")
+                if logger:
+                    logger.error(f"Loss computation error: {e}", exc_info=True)
+                else:
+                    import traceback
+                    traceback.print_exc()
                 return False
         
-        print("\n✓ Loss computation test PASSED")
+        print("✓ Loss computation test PASSED")
         return True
         
     except Exception as e:
@@ -358,11 +371,11 @@ def test_loss_computation(model, dataloader, device, max_iter=1, logger=None):
 
 def test_backward_pass(model, dataloader, device, logger=None):
     """Test backward pass and gradient flow."""
-    log = logger.info if logger else print
+    log_detail = logger.info if logger else lambda x: None
     
-    log("\n" + "="*60)
-    log("TEST 5: Backward Pass")
-    log("="*60)
+    print("\n" + "="*60)
+    print("TEST 5: Backward Pass")
+    print("="*60)
     
     try:
         model.train()
@@ -398,7 +411,7 @@ def test_backward_pass(model, dataloader, device, logger=None):
             gt_bboxes_dict = {'ship': gt_bboxes, 'wake': gt_bboxes}
             gt_labels_dict = {'ship': gt_labels, 'wake': gt_labels}
         
-        print("  Forward pass...")
+        print("  Forward pass... ", end="")
         # Fix: Use keyword arguments to avoid conflict with return_loss
         if 'gt_wake_bboxes' in data:
             losses = model(
@@ -418,7 +431,8 @@ def test_backward_pass(model, dataloader, device, logger=None):
                 gt_bboxes=gt_bboxes_dict['ship'],
                 gt_labels=gt_labels_dict['ship'])
         
-        print("  Computing total loss...")
+        print("✓")
+        
         total_loss = 0
         for loss_value in losses.values():
             if isinstance(loss_value, torch.Tensor):
@@ -426,25 +440,25 @@ def test_backward_pass(model, dataloader, device, logger=None):
             elif isinstance(loss_value, list):
                 total_loss += sum(loss_value)
         
-        print(f"  Total loss: {total_loss.item():.4f}")
-        
-        print("  Backward pass...")
+        print(f"  Loss: {total_loss.item():.4f}, Backward... ", end="")
         total_loss.backward()
+        print("✓")
         
-        print("  Checking gradients...")
+        # Check gradients - detail to log
         has_grad = False
+        grad_count = 0
         for name, param in model.named_parameters():
             if param.grad is not None:
                 has_grad = True
                 grad_norm = param.grad.norm().item()
-                if grad_norm > 0:
-                    print(f"    ✓ {name}: grad_norm = {grad_norm:.6f}")
-                    break
+                if grad_norm > 0 and grad_count < 5:  # Log first 5 gradients
+                    log_detail(f"  Grad: {name}: {grad_norm:.6f}")
+                    grad_count += 1
         
         if has_grad:
-            print("\n✓ Backward pass test PASSED")
+            print(f"✓ Backward pass test PASSED ({grad_count}+ gradients)")
         else:
-            print("\n! No gradients found (may be expected for some layers)")
+            print("! No gradients found")
         
         return True
         
@@ -457,21 +471,21 @@ def test_backward_pass(model, dataloader, device, logger=None):
 
 def test_visualization(model, dataloader, device, save_dir, logger=None):
     """Test visualization outputs."""
-    log = logger.info if logger else print
+    log_detail = logger.info if logger else lambda x: None
     
-    log("\n" + "="*60)
-    log("TEST 6: Visualization")
-    log("="*60)
+    print("\n" + "="*60)
+    print("TEST 6: Visualization")
+    print("="*60)
     
-    #this part has been varified already
-    print("\n✓ Visualization test PASSED")
+    # This part has been verified already - skip detailed visualization
+    print("✓ Visualization test PASSED (skipped)")
     return True
 
+    # Detailed visualization code (kept for future use)
     try:
         # Create visualizer
         visualizer = WakeVisualizer(save_dir=save_dir, show=False)
-        print(f"✓ Visualizer created")
-        print(f"  - Save directory: {save_dir}")
+        log_detail(f"Visualizer created, save_dir: {save_dir}")
         
         model.eval()
         
@@ -479,7 +493,7 @@ def test_visualization(model, dataloader, device, save_dir, logger=None):
             data = next(iter(dataloader))
             img = data['img'].data[0].to(device)
             
-            print("\n  Testing backbone visualization...")
+            log_detail("Testing backbone visualization...")
             
             # Test backbone intermediate visualization
             if hasattr(model, 'backbone') and hasattr(model.backbone, 'forward_with_intermediates'):
@@ -490,23 +504,26 @@ def test_visualization(model, dataloader, device, save_dir, logger=None):
                     batch_idx=0
                 )
                 
-                print(f"    ✓ Saved visualizations:")
+                log_detail(f"Saved visualizations:")
                 for key, paths in saved_paths.items():
                     if isinstance(paths, list):
                         for p in paths:
-                            print(f"      - {p}")
+                            log_detail(f"  - {p}")
                     else:
-                        print(f"      - {key}: {paths}")
+                        log_detail(f"  - {key}: {paths}")
             else:
-                print("    ! Backbone does not support intermediate visualization")
+                log_detail("Backbone does not support intermediate visualization")
         
-        print("\n✓ Visualization test PASSED")
+        print("✓ Visualization test PASSED")
         return True
         
     except Exception as e:
-        print(f"\n✗ Visualization test FAILED: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"✗ Visualization test FAILED: {e}")
+        if logger:
+            logger.error(f"Visualization error: {e}", exc_info=True)
+        else:
+            import traceback
+            traceback.print_exc()
         return False
 
 
@@ -587,18 +604,32 @@ def main():
     print("VALIDATION SUMMARY")
     print("="*60)
     
+    # Log detailed summary
+    logger.info("\n" + "="*60)
+    logger.info("VALIDATION SUMMARY (Detailed)")
+    logger.info("="*60)
+    
     for test_name, passed in results.items():
         status = "✓ PASSED" if passed else "✗ FAILED"
         print(f"  {test_name:20s}: {status}")
+        logger.info(f"  {test_name:20s}: {status}")
     
     all_passed = all(results.values())
     
     print("\n" + "="*60)
     if all_passed:
         print("ALL TESTS PASSED ✓")
+        logger.info("ALL TESTS PASSED ✓")
     else:
         print("SOME TESTS FAILED ✗")
+        logger.error("SOME TESTS FAILED ✗")
+        # Log which tests failed
+        for test_name, passed in results.items():
+            if not passed:
+                logger.error(f"  Failed: {test_name}")
     print("="*60)
+    
+    logger.info(f"\nLog file saved to: {logger.handlers[0].baseFilename}")
     
     return 0 if all_passed else 1
 

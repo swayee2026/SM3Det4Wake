@@ -394,8 +394,10 @@ class ShipPointHead(nn.Module):
         num_pos = (labels > 0).sum().item()
         num_total = max(num_pos, 1)
         
+        # FocalLoss expects target as Long (class indices), not Float
+        # labels should be [0, 1] where 0=negative, 1=positive
         loss_conf = self.loss_conf(
-            flatten_conf_preds, labels.float(), label_weights, avg_factor=num_total)
+            flatten_conf_preds, labels.long(), label_weights, avg_factor=num_total)
         
         if num_pos > 0:
             pos_mask = labels > 0
