@@ -649,13 +649,26 @@ class ShipWakeDualHead(nn.Module):
         for ship_res, wake_res in zip(ship_results, wake_results):
             ship_bboxes, ship_labels, ship_scores = ship_res
             
+            # Handle wake results format: could be (bboxes, labels) or (bboxes,) with scores
             if isinstance(wake_res, tuple):
-                wake_bboxes, wake_labels = wake_res
-                wake_scores = torch.ones(len(wake_bboxes), device=wake_bboxes.device)
+                if len(wake_res) == 3:
+                    # (bboxes, labels, scores) format
+                    wake_bboxes, wake_labels, wake_scores = wake_res
+                else:
+                    # (bboxes, labels) format - generate scores
+                    wake_bboxes, wake_labels = wake_res
+                    wake_scores = torch.ones(len(wake_bboxes), device=wake_bboxes.device)
             else:
+                # Single tensor format - use as bboxes
                 wake_bboxes = wake_res
                 wake_labels = torch.ones(len(wake_bboxes), dtype=torch.long, device=wake_bboxes.device)
                 wake_scores = torch.ones(len(wake_bboxes), device=wake_bboxes.device)
+            
+            # Handle wake_bboxes with scores attached [N, 6] -> [N, 5]
+            # OBB format: [cx, cy, w, h, angle(, score)]
+            if wake_bboxes.dim() == 2 and wake_bboxes.shape[1] == 6:
+                wake_scores = wake_bboxes[:, 5]  # Extract scores
+                wake_bboxes = wake_bboxes[:, :5]  # Keep OBB format
             
             # Adjust labels (0 for ship, 1 for wake)
             if len(ship_labels) > 0:
