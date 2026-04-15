@@ -469,8 +469,16 @@ class RotatedAnchorHead(BaseDenseHead):
         """
         # Unwrap DataContainer if needed
         from mmcv.parallel import DataContainer
+        
         def unwrap(x):
-            return x.data if isinstance(x, DataContainer) else x
+            """Recursively unwrap DataContainer."""
+            if isinstance(x, DataContainer):
+                return unwrap(x.data)
+            elif isinstance(x, dict):
+                return {k: unwrap(v) for k, v in x.items()}
+            elif isinstance(x, (list, tuple)):
+                return type(x)(unwrap(v) for v in x)
+            return x
         
         gt_bboxes = unwrap(gt_bboxes)
         gt_labels = unwrap(gt_labels)

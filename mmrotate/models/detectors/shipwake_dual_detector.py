@@ -385,10 +385,16 @@ class ShipWakeDualDetector(RotatedBaseDetector):
         losses = dict()
         
         if self.with_bbox_head:
-            # Helper to unwrap DataContainer
+            # Helper to unwrap DataContainer recursively
             def unwrap(x):
                 from mmcv.parallel import DataContainer
-                return x.data if isinstance(x, DataContainer) else x
+                if isinstance(x, DataContainer):
+                    return unwrap(x.data)
+                elif isinstance(x, dict):
+                    return {k: unwrap(v) for k, v in x.items()}
+                elif isinstance(x, (list, tuple)):
+                    return type(x)(unwrap(v) for v in x)
+                return x
             
             # Organize GT data (unwrap DataContainer if needed)
             gt_bboxes = {
@@ -400,6 +406,8 @@ class ShipWakeDualDetector(RotatedBaseDetector):
                 'wake': unwrap(gt_wake_labels),
                 'ship': unwrap(gt_ship_labels)
             }
+            # Also unwrap img_metas as it may contain DataContainer values
+            img_metas = unwrap(img_metas)
             
             # Get predictions
             predictions = self.bbox_head(feats)

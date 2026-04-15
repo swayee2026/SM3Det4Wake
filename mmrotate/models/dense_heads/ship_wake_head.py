@@ -355,11 +355,15 @@ class ShipPointHead(nn.Module):
     def loss(self, center_preds, direction_preds, conf_preds,
              gt_points, gt_directions, gt_labels, img_metas, gt_bboxes_ignore=None):
         """Compute losses for point regression."""
-        # Unwrap DataContainer if needed
+        # Unwrap DataContainer if needed (recursive)
         from mmcv.parallel import DataContainer
         def unwrap(x):
             if isinstance(x, DataContainer):
-                return x.data
+                return unwrap(x.data)
+            elif isinstance(x, dict):
+                return {k: unwrap(v) for k, v in x.items()}
+            elif isinstance(x, (list, tuple)):
+                return type(x)(unwrap(v) for v in x)
             return x
         
         gt_points = unwrap(gt_points)
@@ -554,10 +558,16 @@ class ShipWakeDualHead(nn.Module):
         """Compute losses for both heads."""
         losses = {}
         
-        # Unwrap DataContainer if needed
+        # Unwrap DataContainer if needed (recursive)
         from mmcv.parallel import DataContainer
         def unwrap(x):
-            return x.data if isinstance(x, DataContainer) else x
+            if isinstance(x, DataContainer):
+                return unwrap(x.data)
+            elif isinstance(x, dict):
+                return {k: unwrap(v) for k, v in x.items()}
+            elif isinstance(x, (list, tuple)):
+                return type(x)(unwrap(v) for v in x)
+            return x
         
         gt_bboxes = unwrap(gt_bboxes)
         gt_labels = unwrap(gt_labels)
