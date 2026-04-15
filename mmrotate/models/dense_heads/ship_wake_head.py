@@ -423,7 +423,7 @@ class ShipPointHead(nn.Module):
             'loss_center': loss_center,
             'loss_direction': loss_direction,
             'loss_conf': loss_conf,
-            'num_pos': num_pos
+            'num_pos': loss_center.new_tensor(num_pos, dtype=torch.float)  # Convert to tensor for logging
         }
     
     def get_points_predictions(self, center_preds, direction_preds, conf_preds,
