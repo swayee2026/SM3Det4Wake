@@ -4,8 +4,8 @@
    1. [x] dataloader
    2. [x] Model Construction
    3. [x] forward pass
-   4. loss computatiohn
-   5. backward pass
+   4. [x] loss computatiohn
+   5. [x] backward pass
    6. [x] Visualization
 2. 安装 flash_attn 组件
 3. 验证 `tools\visualize_intermediate.py`
@@ -49,6 +49,9 @@ git pull
 
 # validate pipeline
 python tools/validate_pipeline.py configs/ShipWake/shipwake_convnext_t_debug.py
+
+# git pull and execute script
+bash ./validate_pipeline.sh
 
 ```
 

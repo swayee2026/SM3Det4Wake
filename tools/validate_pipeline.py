@@ -635,7 +635,14 @@ def main():
                 logger.error(f"  Failed: {test_name}")
     print("="*60)
     
-    logger.info(f"\nLog file saved to: {logger.handlers[0].baseFilename}")
+    # Safely get log file path
+    log_file_path = None
+    for handler in logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            log_file_path = handler.baseFilename
+            break
+    if log_file_path:
+        logger.info(f"\nLog file saved to: {log_file_path}")
     
     return 0 if all_passed else 1
 
