@@ -3,7 +3,7 @@ log_config = dict(
     interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook', out_dir='/root/tf-logs/', interval=10)
+        dict(type='TensorboardLoggerHook', log_dir='/root/tf-logs/', interval=10)
     ])
 # yapf:enable
 

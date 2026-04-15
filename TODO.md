@@ -54,5 +54,10 @@ python tools/validate_pipeline.py configs/ShipWake/shipwake_convnext_t_debug.py
 bash ./validate_pipeline.sh
 bash ./train_all.sh
 
+# tensorboard
+ps -ef | grep tensorboard | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+
+tensorboard --port 6007 --logdir /root/tf-logs/
+
 ```
 

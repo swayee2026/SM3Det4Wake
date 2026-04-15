@@ -372,6 +372,12 @@ optimizer = dict(
     ),
 )
 
+# Optimizer config (for gradient clipping, etc.)
+optimizer_config = dict(
+    grad_clip=dict(max_norm=35, norm_type=2)  # Gradient clipping for stability
+    # Set to None to disable gradient clipping
+)
+
 # =============================================================================
 # LEARNING RATE SCHEDULE (with DSO)
 # =============================================================================
@@ -411,7 +417,7 @@ log_config = dict(
     interval=log_interval,
     hooks=[
         dict(type="TextLoggerHook"),
-        dict(type="TensorboardLoggerHook", out_dir=tensorboard_dir, interval=10),
+        dict(type="TensorboardLoggerHook", log_dir=tensorboard_dir, interval=10),
     ],
 )
 
