@@ -57,7 +57,11 @@ class LoadSWIMAnnotations(LoadAnnotations):
             results['gt_wake_bboxes'] = ann_info.get('bboxes', np.zeros((0, 5), dtype=np.float32))
             results['gt_wake_labels'] = ann_info.get('labels', np.array([], dtype=np.int64))
         
+        # Add standard aliases for compatibility with transforms like PolyRandomRotate
+        results['gt_bboxes'] = results['gt_wake_bboxes']
+        results['gt_labels'] = results['gt_wake_labels']
         results['bbox_fields'].append('gt_wake_bboxes')
+        results['bbox_fields'].append('gt_bboxes')
         return results
     
     def _load_ship_points(self, results):

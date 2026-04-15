@@ -398,6 +398,12 @@ class PolyRandomRotate(object):
             return None
         results['gt_bboxes'] = gt_bboxes
         results['gt_labels'] = labels
+        
+        # Sync with SWIM dataset specific keys
+        if 'gt_wake_bboxes' in results:
+            results['gt_wake_bboxes'] = gt_bboxes
+        if 'gt_wake_labels' in results:
+            results['gt_wake_labels'] = labels
 
         return results
 
