@@ -542,6 +542,13 @@ class ShipWakeDualHead(nn.Module):
         """Compute losses for both heads."""
         losses = {}
         
+        # Unwrap DataContainer if needed
+        from mmcv.parallel import DataContainer
+        if isinstance(gt_bboxes, DataContainer):
+            gt_bboxes = gt_bboxes.data
+        if isinstance(gt_labels, DataContainer):
+            gt_labels = gt_labels.data
+        
         # Wake OBB losses
         wake_losses = self.wake_head.loss(
             predictions['wake_cls_scores'],
