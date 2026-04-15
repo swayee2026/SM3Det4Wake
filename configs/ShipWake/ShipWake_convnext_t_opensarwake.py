@@ -10,6 +10,9 @@ This configuration is adapted for OpenSARWake dataset:
 Based on ConvNeXt MoE backbone with WakeResidual and GeometricMAMG.
 """
 
+# TODO
+# pipeline not validate yet
+
 # Model configuration
 angle_version = 'le90'
 num_classes = 1  # Only wake class (no ship)

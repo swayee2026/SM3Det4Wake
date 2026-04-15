@@ -163,7 +163,11 @@ model = dict(
         mamg_alpha=mamg_alpha,
         mamg_beta=mamg_beta,
         residual_lambda=residual_lambda,
-        init_cfg=dict(type="Pretrained", checkpoint="open-mmlab://convnext/tiny"),
+        init_cfg=dict(
+            type="Pretrained",
+            checkpoint="https://dl.fbaipublicfiles.com/convnext/convnext_tiny_1k_224_ema.pth",
+            #checkpoint="/root/.cache/torch/hub/checkpoints/convnext_tiny_1k_224_ema.pth“
+        ),
     ),
     neck=dict(
         type="FPN", in_channels=[96, 192, 384, 768], out_channels=256, num_outs=5

@@ -850,48 +850,49 @@ class ConvNeXt_moe_MultiInput(ConvNeXt_moe):
                 
             state_dict = OrderedDict()
             for k, v in _state_dict.items():
+                # Remove 'backbone.' prefix if present (for weights from classification models)
                 if k.startswith('backbone.'):
                     k = k[9:]
-                    
-                    if 'downsample_layers.0.0' in k:
-                        for i in self.datasets:
-                            new_k = k.replace('downsample_layers.0.0', 'dataset_stems.'+str(i))
-                            state_dict[new_k] = v 
-                    elif 'downsample_layers.0.1' in k:
-                        for i in self.datasets:
-                            new_k = k.replace('downsample_layers.0.1', 'downsample_layers.0.0')
-                            state_dict[new_k] = v
-
-
-                    elif 'pointwise_conv' in k:
-                        stage_splits = k.split('.') 
-                        stage_ind = eval(stage_splits[1])
-                        blocks_ind = eval(stage_splits[2]) 
-                        # if blocks_ind in [list(range(self.depth))[q] for q in self.MoE_Block_inds[stage_ind] if q < self.depth]:
-                        if blocks_ind in self.MoE_Block_inds[stage_ind]:
-                            for expert_idx in range(self.num_experts):
-                                new_k = k.replace('pointwise_conv', 'ffn.experts.'+str(expert_idx)+'.pointwise_conv')
-                                state_dict[new_k] = v
-                        else:
-                            new_k = k.replace('pointwise_conv', 'ffn.pointwise_conv') 
-                            state_dict[new_k] = v
-                    elif 'grn' in k:
-                        
-                        stage_splits = k.split('.') 
-                        stage_ind = eval(stage_splits[1])
-                        blocks_ind = eval(stage_splits[2]) 
-                        if blocks_ind in self.MoE_Block_inds[stage_ind]:
-                            for expert_idx in range(self.num_experts):
-                                new_k = k.replace('grn', 'ffn.experts.'+str(expert_idx)+'.grn')
-                                state_dict[new_k] = v
-                        else:        
-                            new_k = k.replace('grn', 'ffn.grn')
+                
+                # Map downsample layers for multi-dataset support
+                if 'downsample_layers.0.0' in k:
+                    for i in self.datasets:
+                        new_k = k.replace('downsample_layers.0.0', 'dataset_stems.'+str(i))
+                        state_dict[new_k] = v 
+                elif 'downsample_layers.0.1' in k:
+                    for i in self.datasets:
+                        new_k = k.replace('downsample_layers.0.1', 'downsample_layers.0.0')
+                        state_dict[new_k] = v
+                # Map pointwise_conv for MoE blocks
+                elif 'pointwise_conv' in k:
+                    stage_splits = k.split('.') 
+                    stage_ind = eval(stage_splits[1])
+                    blocks_ind = eval(stage_splits[2]) 
+                    if blocks_ind in self.MoE_Block_inds[stage_ind]:
+                        for expert_idx in range(self.num_experts):
+                            new_k = k.replace('pointwise_conv', 'ffn.experts.'+str(expert_idx)+'.pointwise_conv')
                             state_dict[new_k] = v
                     else:
-                        state_dict[k] = v
+                        new_k = k.replace('pointwise_conv', 'ffn.pointwise_conv') 
+                        state_dict[new_k] = v
+                # Map grn for MoE blocks
+                elif 'grn' in k:
+                    stage_splits = k.split('.') 
+                    stage_ind = eval(stage_splits[1])
+                    blocks_ind = eval(stage_splits[2]) 
+                    if blocks_ind in self.MoE_Block_inds[stage_ind]:
+                        for expert_idx in range(self.num_experts):
+                            new_k = k.replace('grn', 'ffn.experts.'+str(expert_idx)+'.grn')
+                            state_dict[new_k] = v
+                    else:        
+                        new_k = k.replace('grn', 'ffn.grn')
+                        state_dict[new_k] = v
+                else:
+                    # Keep other keys as-is
+                    state_dict[k] = v
 
             # strip prefix of state_dict
-            if list(state_dict.keys())[0].startswith('module.'):
+            if len(state_dict) > 0 and list(state_dict.keys())[0].startswith('module.'):
                 state_dict = {k[7:]: v for k, v in state_dict.items()}
 
             # load state_dict 
