@@ -831,13 +831,16 @@ class ShipWakeDualHead(nn.Module):
             all_scores = torch.cat([ship_scores, wake_scores], dim=0)
 
             # Append scores to bboxes: [N, 5] -> [N, 6] for compatibility
-            all_bboxes_with_scores = torch.cat(
-                [all_bboxes, all_scores.unsqueeze(1)], dim=1
-            )
+            if len(all_bboxes) > 0:
+                all_bboxes_with_scores = torch.cat(
+                    [all_bboxes, all_scores.unsqueeze(1)], dim=1
+                )
+            else:
+                all_bboxes_with_scores = all_bboxes.new_zeros((0, 6))
 
             # Return format: (bbox_results, mask_results) for MMDetection compatibility
             # mask_results is None as we don't do instance segmentation
-            combined_results.append((all_bboxes_with_scores, all_labels))
+            combined_results.append((all_bboxes_with_scores, None))
 
         return combined_results
 
