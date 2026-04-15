@@ -321,14 +321,22 @@ class ShipPointHead(nn.Module):
         
         if len(pos_inds) > 0:
             pos_gt_inds = nearest_gt_inds[pos_inds]
+            
+            # Target computation doesn't need gradients
+            # Clone to avoid inplace operations that break gradient flow
+            labels = labels.clone()
             labels[pos_inds] = 1
             
             point_coords = concat_points[pos_inds, :2]
             gt_coords = gt_points[pos_gt_inds]
+            center_targets = center_targets.clone()
             center_targets[pos_inds] = gt_coords - point_coords
+            center_weights = center_weights.clone()
             center_weights[pos_inds] = 1.0
             
+            direction_targets = direction_targets.clone()
             direction_targets[pos_inds] = gt_directions[pos_gt_inds]
+            direction_weights = direction_weights.clone()
             direction_weights[pos_inds] = 1.0
         
         return (labels, label_weights, center_targets, direction_targets,
@@ -666,17 +674,27 @@ class CosineSimilarityLoss(nn.Module):
         self.reduction = reduction
     
     def forward(self, pred, target, weight=None, avg_factor=None):
-        """Forward function."""
+        """Forward function.
+        
+        Args:
+            pred: Predicted directions [N, 2] (cos, sin)
+            target: Target directions [N, 2] (cos, sin)
+            weight: Loss weights [N] or [N, 1] or [N, 2]
+        """
         pred_norm = F.normalize(pred, p=2, dim=-1)
         target_norm = F.normalize(target, p=2, dim=-1)
-        cos_sim = (pred_norm * target_norm).sum(dim=-1)
-        loss = 1 - cos_sim
+        cos_sim = (pred_norm * target_norm).sum(dim=-1)  # [N]
+        loss = 1 - cos_sim  # [N]
         
         if weight is not None:
-            loss = loss * weight.squeeze(-1)
+            # Handle various weight shapes: [N], [N, 1], [N, 2]
+            if weight.dim() > 1:
+                # If weight is [N, 2] or [N, 1], take mean across last dim to get [N]
+                weight = weight.mean(dim=-1)
+            loss = loss * weight
         
         if self.reduction == 'mean':
-            if avg_factor is None:
+            if avg_factor is None or avg_factor == 0:
                 loss = loss.mean()
             else:
                 loss = loss.sum() / avg_factor
