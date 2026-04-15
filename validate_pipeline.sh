@@ -2,6 +2,8 @@
 
 echo "=== 数据管线验证 ==="
 
+conda activate SM3Det4Wake
+
 git checkout
 
 git stash
