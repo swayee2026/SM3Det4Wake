@@ -266,35 +266,11 @@ pip install -r requirements.txt
 # 5. 安装本项目
 pip install -e .
 
-# activate environment
-conda activate SM3Det4Wake
-source /etc/network_turbo
-env | grep prox
-unset http_proxy && unset https_proxy
-# download dataset SWIM
-curl -L -o ./swimship-wake-imagery-mass.zip https://www.kaggle.com/api/v1/datasets/download/lilitopia/swimship-wake-imagery-mass
-kaggle datasets download -d lilitopia/swimship-wake-imagery-mass -p /root/autodl-tmp/swim/ --unzip
-
-
-# download dataset OpenSARWake
-git clone https://huggingface.co/datasets/Voxel51/OpenSARWake
-git clone https://hf-mirror.com//datasets/Voxel51/OpenSARWake
-
-# sync with github
-git clone https://ghfast.top/https://github.com/swayee2026/SM3Det4Wake.git
-
-git pull
-
-
-#dataset dir
---dir /root/autodl-tmp/swim/tiny_swim
---dir /root/autodl-tmp/swim/tiny_swim/Annotations
---dir /root/autodl-tmp/swim/tiny_swim/Landmarks
---dir /root/autodl-tmp/swim/tiny_swim/PNGImages
---dir /root/autodl-tmp/swim/tiny_swim/ImageSets
-
-# validate pipeline
+# 6.验证管线
 python tools/validate_pipeline.py configs/ShipWake/shipwake_convnext_t_debug.py
+
+# 7. 全量数据集训练 TODO
+python tools/train.py configs/ShipWake/shipwake_convnext_t.py
 
 ```
 

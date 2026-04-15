@@ -467,6 +467,16 @@ class RotatedAnchorHead(BaseDenseHead):
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
         """
+        # Unwrap DataContainer if needed
+        from mmcv.parallel import DataContainer
+        def unwrap(x):
+            return x.data if isinstance(x, DataContainer) else x
+        
+        gt_bboxes = unwrap(gt_bboxes)
+        gt_labels = unwrap(gt_labels)
+        img_metas = unwrap(img_metas)
+        gt_bboxes_ignore = unwrap(gt_bboxes_ignore)
+        
         featmap_sizes = [featmap.size()[-2:] for featmap in cls_scores]
         assert len(featmap_sizes) == self.anchor_generator.num_levels
 

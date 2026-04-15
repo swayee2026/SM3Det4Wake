@@ -355,6 +355,18 @@ class ShipPointHead(nn.Module):
     def loss(self, center_preds, direction_preds, conf_preds,
              gt_points, gt_directions, gt_labels, img_metas, gt_bboxes_ignore=None):
         """Compute losses for point regression."""
+        # Unwrap DataContainer if needed
+        from mmcv.parallel import DataContainer
+        def unwrap(x):
+            if isinstance(x, DataContainer):
+                return x.data
+            return x
+        
+        gt_points = unwrap(gt_points)
+        gt_directions = unwrap(gt_directions)
+        gt_labels = unwrap(gt_labels)
+        img_metas = unwrap(img_metas)
+        
         gt_points = [p.to(center_preds[0].device) for p in gt_points]
         gt_directions = [d.to(direction_preds[0].device) for d in gt_directions]
         gt_labels = [l.to(conf_preds[0].device) for l in gt_labels]
@@ -544,17 +556,20 @@ class ShipWakeDualHead(nn.Module):
         
         # Unwrap DataContainer if needed
         from mmcv.parallel import DataContainer
-        if isinstance(gt_bboxes, DataContainer):
-            gt_bboxes = gt_bboxes.data
-        if isinstance(gt_labels, DataContainer):
-            gt_labels = gt_labels.data
+        def unwrap(x):
+            return x.data if isinstance(x, DataContainer) else x
+        
+        gt_bboxes = unwrap(gt_bboxes)
+        gt_labels = unwrap(gt_labels)
+        img_metas = unwrap(img_metas)
+        gt_bboxes_ignore = unwrap(gt_bboxes_ignore)
         
         # Wake OBB losses
         wake_losses = self.wake_head.loss(
             predictions['wake_cls_scores'],
             predictions['wake_bbox_preds'],
-            gt_bboxes.get('wake', []),
-            gt_labels.get('wake', []),
+            unwrap(gt_bboxes.get('wake', [])),
+            unwrap(gt_labels.get('wake', [])),
             img_metas,
             gt_bboxes_ignore=gt_bboxes_ignore)
         
@@ -566,9 +581,9 @@ class ShipWakeDualHead(nn.Module):
             predictions['ship_center_preds'],
             predictions['ship_direction_preds'],
             predictions['ship_conf_preds'],
-            gt_bboxes.get('ship_points', []),
-            gt_bboxes.get('ship_directions', []),
-            gt_labels.get('ship', []),
+            unwrap(gt_bboxes.get('ship_points', [])),
+            unwrap(gt_bboxes.get('ship_directions', [])),
+            unwrap(gt_labels.get('ship', [])),
             img_metas,
             gt_bboxes_ignore=gt_bboxes_ignore)
         
