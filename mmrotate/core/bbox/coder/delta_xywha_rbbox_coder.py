@@ -227,6 +227,12 @@ def delta2bbox(rois,
         Tensor: Boxes with shape (N, num_classes * 5) or (N, 5), where 5
            represent cx, cy, w, h, a.
     """
+    # Unwrap DataContainer if needed (for validation/test compatibility)
+    if max_shape is not None and hasattr(max_shape, 'data'):
+        from mmcv.parallel import DataContainer
+        if isinstance(max_shape, DataContainer):
+            max_shape = max_shape.data
+    
     means = deltas.new_tensor(means).view(1, -1).repeat(1, deltas.size(1) // 5)
     stds = deltas.new_tensor(stds).view(1, -1).repeat(1, deltas.size(1) // 5)
     denorm_deltas = deltas * stds + means
