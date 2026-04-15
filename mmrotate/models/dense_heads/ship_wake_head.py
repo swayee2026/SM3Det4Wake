@@ -493,7 +493,11 @@ class ShipPointHead(nn.Module):
             pred_labels = torch.ones(len(pred_bboxes), dtype=torch.long, device=pred_bboxes.device)
             
             if rescale:
+                from mmcv.parallel import DataContainer
                 scale_factor = img_metas[img_id].get('scale_factor', 1.0)
+                # Unwrap DataContainer if needed
+                if isinstance(scale_factor, DataContainer):
+                    scale_factor = scale_factor.data
                 if isinstance(scale_factor, (list, tuple)):
                     scale_factor = scale_factor[0]
                 pred_bboxes[:, :4] /= scale_factor
