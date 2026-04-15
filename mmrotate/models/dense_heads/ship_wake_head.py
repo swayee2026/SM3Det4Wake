@@ -521,7 +521,9 @@ class ShipWakeDualHead(nn.Module):
             num_classes=1,
             in_channels=in_channels,
             feat_channels=256,
-            stacked_convs=4
+            stacked_convs=4,
+            train_cfg=train_cfg,
+            test_cfg=test_cfg
         )
         if wake_head_cfg is not None:
             wake_cfg.update(wake_head_cfg)
@@ -535,7 +537,9 @@ class ShipWakeDualHead(nn.Module):
             stacked_convs=4,
             num_anchors=1,
             strides=[8, 16, 32, 64, 128],
-            center_sampling_radius=1.5
+            center_sampling_radius=1.5,
+            train_cfg=train_cfg,
+            test_cfg=test_cfg
         )
         if ship_head_cfg is not None:
             ship_cfg.update(ship_head_cfg)

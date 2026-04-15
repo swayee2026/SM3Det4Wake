@@ -108,6 +108,7 @@ model = dict(
             neg_pos_ub=-1,
             add_gt_as_proposals=True),
         pos_weight=-1,
+        allowed_border=-1,
         debug=False,
         # Test config
         nms_pre=2000,
