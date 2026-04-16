@@ -105,6 +105,13 @@ def tpfp_default(det_bboxes,
     return tp, fp
 
 
+def _to_numpy(obj):
+    """Recursively convert torch.Tensor/DataContainer to numpy array."""
+    if isinstance(obj, torch.Tensor):
+        return obj.detach().cpu().numpy()
+    return np.array(obj)
+
+
 def get_cls_results(det_results, annotations, class_id):
     """Get det results and gt information of a certain class.
 
@@ -116,20 +123,23 @@ def get_cls_results(det_results, annotations, class_id):
     Returns:
         tuple[list[np.ndarray]]: detected bboxes, gt bboxes, ignored gt bboxes
     """
-    cls_dets = [img_res[class_id] for img_res in det_results]
+    cls_dets = [_to_numpy(img_res[class_id]) for img_res in det_results]
 
     cls_gts = []
     cls_gts_ignore = []
     for ann in annotations:
-        gt_inds = ann['labels'] == class_id
-        cls_gts.append(ann['bboxes'][gt_inds, :])
+        labels = _to_numpy(ann['labels'])
+        bboxes = _to_numpy(ann['bboxes'])
+        gt_inds = labels == class_id
+        cls_gts.append(bboxes[gt_inds, :])
 
         if ann.get('labels_ignore', None) is not None:
-            ignore_inds = ann['labels_ignore'] == class_id
-            cls_gts_ignore.append(ann['bboxes_ignore'][ignore_inds, :])
-
+            labels_ignore = _to_numpy(ann['labels_ignore'])
+            bboxes_ignore = _to_numpy(ann['bboxes_ignore'])
+            ignore_inds = labels_ignore == class_id
+            cls_gts_ignore.append(bboxes_ignore[ignore_inds, :])
         else:
-            cls_gts_ignore.append(torch.zeros((0, 5), dtype=torch.float64))
+            cls_gts_ignore.append(np.zeros((0, 5), dtype=np.float64))
 
     return cls_dets, cls_gts, cls_gts_ignore
 
