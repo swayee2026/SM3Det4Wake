@@ -18,7 +18,7 @@ echo "=== 训练阶段完成 ==="
 
 echo "=== 验证阶段开始 ==="
 
-python tools/test.py configs/ShipWake/Shipwake_convnext_t.py work_dirs/train/latest.pth --out work_dirs/test/test.pkl --eval mAP --show
+python tools/test.py configs/ShipWake/ShipWake_convnext_t.py work_dirs/train/latest.pth --out work_dirs/test/test.pkl --eval mAP  --show-dir work_dirs/test/vis/
 
 echo "=== 训练和验证完成 ==="
 

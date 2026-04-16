@@ -45,6 +45,16 @@ def train_detector(model,
 
     data_loaders = [build_dataloader(ds, **train_loader_cfg) for ds in dataset]
 
+    for ds, loader in zip(dataset, data_loaders):
+        logger.info(f'Dataset {type(ds).__name__}: len={len(ds)}, '
+                    f'dataloader len={len(loader)}')
+        if len(ds) == 0:
+            raise ValueError(f'Training dataset {type(ds).__name__} is empty! '
+                             f'Please check ann_file and data_root.')
+        if len(loader) == 0:
+            raise ValueError(f'DataLoader for {type(ds).__name__} has length 0! '
+                             f'Possible cause: samples_per_gpu > len(dataset).')
+
     # put model on gpus
     if distributed:
         find_unused_parameters = cfg.get('find_unused_parameters', False)
