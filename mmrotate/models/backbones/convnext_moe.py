@@ -168,8 +168,13 @@ class MoE_layer(nn.Module):
         # is each value currently in the top k.
 
         normal = Normal(self.mean.to(noise_stddev.device), self.std.to(noise_stddev.device))
-        prob_if_in = normal.cdf((clean_values - threshold_if_in)/noise_stddev)
-        prob_if_out = normal.cdf((clean_values - threshold_if_out)/noise_stddev)
+        safe_noise = noise_stddev.clamp(min=1e-8)
+        z_if_in = (clean_values - threshold_if_in) / safe_noise
+        z_if_out = (clean_values - threshold_if_out) / safe_noise
+        z_if_in = torch.nan_to_num(z_if_in, nan=0.0, posinf=10.0, neginf=-10.0)
+        z_if_out = torch.nan_to_num(z_if_out, nan=0.0, posinf=10.0, neginf=-10.0)
+        prob_if_in = normal.cdf(z_if_in)
+        prob_if_out = normal.cdf(z_if_out)
         prob = torch.where(is_in, prob_if_in, prob_if_out)
         return prob
 
@@ -200,6 +205,7 @@ class MoE_layer(nn.Module):
         if self.noisy_gating and train:
             raw_noise_stddev = x @ self.w_noise
             noise_stddev = ((self.softplus(raw_noise_stddev) + noise_epsilon) * train)
+            noise_stddev = noise_stddev.clamp(max=10.0)
             noisy_logits = clean_logits + ( torch.randn_like(clean_logits) * noise_stddev)
             logits = noisy_logits
         else:
