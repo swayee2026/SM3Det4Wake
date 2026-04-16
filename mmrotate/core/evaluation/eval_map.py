@@ -229,6 +229,18 @@ def eval_rbbox_map(det_results,
             cls_dets, cls_gts, cls_gts_ignore = get_cls_results(
                 det_results, annotations, i)
 
+            # Guard against empty 1-D arrays that np.vstack would expand
+            # to (1, 0) instead of (0, 6) / (0, 5)
+            cls_dets = [
+                d.reshape(0, 6) if d.ndim == 1 else d for d in cls_dets
+            ]
+            cls_gts = [
+                g.reshape(0, 5) if g.ndim == 1 else g for g in cls_gts
+            ]
+            cls_gts_ignore = [
+                g.reshape(0, 5) if g.ndim == 1 else g for g in cls_gts_ignore
+            ]
+
             # compute tp and fp for each image with multiple processes
             tpfp = pool.starmap(
                 tpfp_default,
