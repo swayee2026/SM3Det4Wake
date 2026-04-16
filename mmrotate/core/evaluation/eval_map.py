@@ -172,6 +172,9 @@ def eval_rbbox_map(det_results,
     area_ranges = ([(rg[0]**2, rg[1]**2) for rg in scale_ranges]
                    if scale_ranges is not None else None)
 
+    if isinstance(iou_thr, (int, float)):
+        iou_thr = [iou_thr]
+
     pool = get_context('spawn').Pool(nproc)
     mAP50eval_results=None
     mAP75eval_results=None
@@ -228,12 +231,17 @@ def eval_rbbox_map(det_results,
                 'precision': precisions,
                 'ap': ap
             })
-            mAP_eval_results.append(eval_results)
-            if thr==0.5:
-                mAP50eval_results=eval_results
-            elif thr==0.75:
-                mAP75eval_results=eval_results 
-    pool.close() 
+        mAP_eval_results.append(eval_results)
+        if thr == 0.5:
+            mAP50eval_results = eval_results
+        elif thr == 0.75:
+            mAP75eval_results = eval_results
+    pool.close()
+
+    if mAP50eval_results is None and mAP_eval_results:
+        mAP50eval_results = mAP_eval_results[0]
+    if mAP75eval_results is None and mAP_eval_results:
+        mAP75eval_results = mAP_eval_results[0]
     
     mean_ap_50 = 0
     mean_ap_75 = 0
