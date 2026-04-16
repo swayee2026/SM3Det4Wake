@@ -121,9 +121,18 @@ def tpfp_default(det_bboxes,
 
 def _to_numpy(obj):
     """Recursively convert torch.Tensor/DataContainer to numpy array."""
+    from mmcv.parallel import DataContainer
+    if isinstance(obj, DataContainer):
+        return _to_numpy(obj.data)
     if isinstance(obj, torch.Tensor):
         return obj.detach().cpu().numpy()
-    return np.array(obj)
+    if obj is None:
+        return np.array([])
+    arr = np.array(obj)
+    if arr.ndim == 0 and arr.dtype == object:
+        # fallback for unexpected wrapper objects
+        return np.array([])
+    return arr
 
 
 def get_cls_results(det_results, annotations, class_id):
