@@ -11,6 +11,30 @@ from mmdet.datasets import (build_dataset, replace_ImageToTensor)
 from mmrotate.utils import compat_cfg, find_latest_checkpoint, get_root_logger
 from mmrotate.datasets import build_dataloader
 
+
+def _fix_optimizer_state_shape(optimizer):
+    """Fix optimizer state shape mismatch for scalar parameters.
+
+    When resuming from a checkpoint or when scalar parameters (shape [])
+    are present, the optimizer state (exp_avg, exp_avg_sq, step) may have
+    incompatible shapes (e.g. [1] instead of []) causing
+    `RuntimeError: output with shape [] doesn't match the broadcast shape [1]`
+    inside AdamW.step().
+    """
+    for group in optimizer.param_groups:
+        for p in group['params']:
+            if not p.requires_grad:
+                continue
+            state = optimizer.state.get(p)
+            if state is None:
+                continue
+            for key in ('exp_avg', 'exp_avg_sq', 'max_exp_avg_sq'):
+                if key in state and state[key].shape != p.shape:
+                    state[key] = state[key].reshape(p.shape)
+            if 'step' in state and isinstance(state['step'], torch.Tensor):
+                state['step'] = state['step'].cpu()
+
+
 def train_detector(model,
                    dataset,
                    cfg,
@@ -71,6 +95,7 @@ def train_detector(model,
 
     # build runner
     optimizer = build_optimizer(model, cfg.optimizer)
+    _fix_optimizer_state_shape(optimizer)
 
     runner = build_runner(
         cfg.runner,
@@ -183,11 +208,8 @@ def train_detector(model,
 
     if cfg.resume_from:
         runner.resume(cfg.resume_from)
-        # Fix: Ensure optimizer state['step'] is on CPU for AdamW compatibility
-        # This handles the case where checkpoint was saved with CUDA tensors
-        for state in runner.optimizer.state.values():
-            if 'step' in state and isinstance(state['step'], torch.Tensor):
-                state['step'] = state['step'].cpu()
+        _fix_optimizer_state_shape(runner.optimizer)
     elif cfg.load_from:
         runner.load_checkpoint(cfg.load_from)
+        _fix_optimizer_state_shape(runner.optimizer)
     runner.run(data_loaders, cfg.workflow)
