@@ -7,14 +7,14 @@
    4. [x] loss computatiohn
    5. [x] backward pass
    6. [x] Visualization
-2. [ ] 安装 flash_attn 组件
-3. [ ] 验证 `tools\visualize_intermediate.py`
-4. [x] 验证 `tools\train.py`
-5. [ ] 验证 `tools\test.py`
-6. [x] 验证 tensorboard 窗口对齐
-7. [ ] 全量数据集放入训练
+2. [x] 验证 `tools\train.py`
+3. [x] 验证 `tools\test.py`
+4. [x] 验证 tensorboard 窗口对齐
+5. [ ] 全量数据集放入训练
+6. [ ] 安装 flash_attn 组件
+7. [ ] 验证 `tools\visualize_intermediate.py`
 8. [ ] 新建消融实验验证的脚本 `tools\ablation.py`
-9. [ ] 在验证通路之后，进一步删除无关函数和docs，requirements
+9. [ ] 完成所有实验后，删除无关配置文件
 
 ## command log
 
