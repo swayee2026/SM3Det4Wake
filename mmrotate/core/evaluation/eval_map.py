@@ -37,10 +37,24 @@ def tpfp_default(det_bboxes,
         det_bboxes = det_bboxes.detach().cpu().numpy()
     else:
         det_bboxes = np.array(det_bboxes)
+    if det_bboxes.ndim == 1:
+        det_bboxes = det_bboxes.reshape(0, 6)
+
     if isinstance(gt_bboxes, torch.Tensor):
         gt_bboxes = gt_bboxes.detach().cpu().numpy()
-    if isinstance(gt_bboxes_ignore, torch.Tensor):
+    else:
+        gt_bboxes = np.array(gt_bboxes)
+    if gt_bboxes.ndim == 1:
+        gt_bboxes = gt_bboxes.reshape(0, 5)
+
+    if gt_bboxes_ignore is None:
+        gt_bboxes_ignore = np.zeros((0, 5), dtype=np.float64)
+    elif isinstance(gt_bboxes_ignore, torch.Tensor):
         gt_bboxes_ignore = gt_bboxes_ignore.detach().cpu().numpy()
+    else:
+        gt_bboxes_ignore = np.array(gt_bboxes_ignore)
+    if gt_bboxes_ignore.ndim == 1:
+        gt_bboxes_ignore = gt_bboxes_ignore.reshape(0, 5)
 
     # an indicator of ignored gts
     gt_ignore_inds = np.concatenate(
