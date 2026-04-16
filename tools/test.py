@@ -12,7 +12,8 @@ from mmcv.cnn import fuse_conv_bn
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import (get_dist_info, init_dist, load_checkpoint,
                          wrap_fp16_model)
-from mmdet.apis import multi_gpu_test, single_gpu_test
+from mmdet.apis import multi_gpu_test
+from mmrotate.apis import single_gpu_test
 
 from mmdet.datasets import build_dataloader, replace_ImageToTensor
 

@@ -9,10 +9,12 @@
    6. [x] Visualization
 2. [ ] 安装 flash_attn 组件
 3. [ ] 验证 `tools\visualize_intermediate.py`
-4. [ ] 验证 tensorboard 窗口对齐
-5. [ ] 全量数据集放入训练
-6. [ ] 新建消融实验验证的脚本 `tools\ablation.py`
-7. [ ] 在验证通路之后，进一步删除无关函数和docs，requirements
+4. [x] 验证 `tools\train.py`
+5. [ ] 验证 `tools\test.py`
+6. [x] 验证 tensorboard 窗口对齐
+7. [ ] 全量数据集放入训练
+8. [ ] 新建消融实验验证的脚本 `tools\ablation.py`
+9. [ ] 在验证通路之后，进一步删除无关函数和docs，requirements
 
 ## command log
 
@@ -49,6 +51,7 @@ git pull
 
 # validate pipeline
 python tools/validate_pipeline.py configs/ShipWake/shipwake_convnext_t_debug.py
+python tools/test.py configs/ShipWake/ShipWake_convnext_t.py work_dirs/train/latest.pth --out work_dirs/test/test.pkl --eval mAP --show 
 
 # git pull and execute script
 bash ./validate_pipeline.sh
