@@ -18,8 +18,8 @@ Usage:
 
 # --- Dataset Paths ---
 dataset_type = "SWIMDataset"
-data_root = "/root/autodl-tmp/swim/tiny_swim/"  # Full dataset path
-# data_root = "/root/autodl-tmp/swim/SWIM_Dataset_1.0.0/"  # Full dataset path
+#data_root = "/root/autodl-tmp/swim/tiny_swim/"  # Full dataset path
+data_root = "/root/autodl-tmp/swim/SWIM_Dataset_1.0.0/"  # Full dataset path
 # TODO edit for debug of train.py
 angle_version = "le90"  # Rotation angle encoding: 'le90' or 'oc'
 
