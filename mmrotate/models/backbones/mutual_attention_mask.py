@@ -216,8 +216,8 @@ class MaskGuidedFusion(BaseModule):
         self.in_channels = in_channels
         
         # Learnable guidance strengths
-        self.alpha = nn.Parameter(torch.tensor(init_alpha))
-        self.beta = nn.Parameter(torch.tensor(init_beta))
+        self.alpha = nn.Parameter(torch.tensor([init_alpha]))
+        self.beta = nn.Parameter(torch.tensor([init_beta]))
         
         # Fusion convolution
         self.fusion_conv = nn.Sequential(

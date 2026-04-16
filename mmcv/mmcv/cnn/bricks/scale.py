@@ -15,7 +15,7 @@ class Scale(nn.Module):
 
     def __init__(self, scale: float = 1.0):
         super().__init__()
-        self.scale = nn.Parameter(torch.tensor(scale, dtype=torch.float))
+        self.scale = nn.Parameter(torch.tensor([scale], dtype=torch.float))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return x * self.scale

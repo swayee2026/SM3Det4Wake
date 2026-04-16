@@ -115,8 +115,8 @@ class CrossGuidedFusion(nn.Module):
     
     def __init__(self, channels, alpha=0.2, beta=0.5):
         super().__init__()
-        self.alpha = nn.Parameter(torch.tensor(alpha))
-        self.beta = nn.Parameter(torch.tensor(beta))
+        self.alpha = nn.Parameter(torch.tensor([alpha]))
+        self.beta = nn.Parameter(torch.tensor([beta]))
         self.fusion_conv = nn.Conv2d(channels * 2, channels, 1)
         self.norm = nn.BatchNorm2d(channels)
         

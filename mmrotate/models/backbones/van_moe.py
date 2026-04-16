@@ -645,7 +645,7 @@ class VAN_moe_MultiInput(VAN_moe):
             assert self.datasets is not None
             self.datasets.append('uni_stem')
         if inject_uni_info_mode == 'scalar':
-            self.alphas = [nn.Parameter(torch.tensor(0.5))] * len(self.init_datasets)
+            self.alphas = [nn.Parameter(torch.tensor([0.5]))] * len(self.init_datasets)
         if inject_uni_info_mode == 'channel_attention':
             self.avg_pool = nn.AdaptiveAvgPool2d(1)
             self.se = nn.Sequential(

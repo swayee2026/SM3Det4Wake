@@ -102,7 +102,7 @@ class LowFreqResidual(nn.Module):
         self.register_buffer('gaussian_kernel', kernel)
         
         # Learnable weight for residual
-        self.residual_weight = nn.Parameter(torch.tensor(0.1))
+        self.residual_weight = nn.Parameter(torch.tensor([0.1]))
         
     def _create_gaussian_kernel(self, kernel_size, sigma):
         """Create 2D Gaussian kernel.
@@ -209,7 +209,7 @@ class ResidualFusion(nn.Module):
     
     def __init__(self, channels, init_lambda=0.1):
         super().__init__()
-        self.lambda_residual = nn.Parameter(torch.tensor(init_lambda))
+        self.lambda_residual = nn.Parameter(torch.tensor([init_lambda]))
         
         # Channel attention for adaptive fusion
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
