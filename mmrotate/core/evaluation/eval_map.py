@@ -32,8 +32,17 @@ def tpfp_default(det_bboxes,
         tuple[np.ndarray]: (tp, fp) whose elements are 0 and 1. The shape of
             each array is (num_scales, m).
     """
+    # Convert tensors to numpy arrays if necessary
+    if isinstance(det_bboxes, torch.Tensor):
+        det_bboxes = det_bboxes.detach().cpu().numpy()
+    else:
+        det_bboxes = np.array(det_bboxes)
+    if isinstance(gt_bboxes, torch.Tensor):
+        gt_bboxes = gt_bboxes.detach().cpu().numpy()
+    if isinstance(gt_bboxes_ignore, torch.Tensor):
+        gt_bboxes_ignore = gt_bboxes_ignore.detach().cpu().numpy()
+
     # an indicator of ignored gts
-    det_bboxes = np.array(det_bboxes)
     gt_ignore_inds = np.concatenate(
         (np.zeros(gt_bboxes.shape[0],
                   dtype=bool), np.ones(gt_bboxes_ignore.shape[0], dtype=bool)))
