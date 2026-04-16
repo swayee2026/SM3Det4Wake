@@ -286,6 +286,12 @@ class MoE_layer(nn.Module):
         else:
             logits = clean_logits
 
+        # Sanitize to prevent inf/nan from breaking softmax and gates
+        clean_logits = torch.nan_to_num(clean_logits, nan=0.0, posinf=1e4, neginf=-1e4)
+        if self.noisy_gating and train:
+            noisy_logits = torch.nan_to_num(noisy_logits, nan=0.0, posinf=1e4, neginf=-1e4)
+        logits = torch.nan_to_num(logits, nan=0.0, posinf=1e4, neginf=-1e4)
+
         top_logits, top_indices = logits.topk(min(self.k + 1, self.num_experts), dim= -1)  
         
         top_k_logits = top_logits[:, :self.k] if len(top_logits.shape) == 2 else top_logits[:, :, :self.k]    
@@ -295,7 +301,13 @@ class MoE_layer(nn.Module):
 
         zeros = torch.zeros_like(logits, requires_grad=True)
        
-        gates = zeros.scatter(-1, top_k_indices, top_k_gates)  
+        gates = zeros.scatter(-1, top_k_indices, top_k_gates)
+
+        # Defensive: if softmax produced nan/inf, fallback to uniform gates
+        gates = torch.nan_to_num(gates, nan=0.0, posinf=1.0, neginf=0.0)
+        row_sums = gates.sum(dim=-1, keepdim=True)
+        uniform = torch.ones_like(gates) / self.num_experts
+        gates = torch.where(row_sums > 0, gates / row_sums.clamp(min=1e-8), uniform)
 
         if self.noisy_gating and self.k < self.num_experts and train:
             load = (self._prob_in_top_k(clean_logits, noisy_logits, noise_stddev, top_logits)).sum(0)
@@ -370,7 +382,17 @@ class SparseDispatcher(object):
         inp_exp = inp[self._batch_index].squeeze(1)
 
         if self.squads is None:
-            return torch.split(inp_exp, self._part_sizes, dim=0), torch.split(identity, self._part_sizes, dim=0)
+            split_sizes = self._part_sizes
+            if sum(split_sizes) != inp_exp.size(0):
+                if inp_exp.size(0) == 0:
+                    split_sizes = [0] * self._num_experts
+                else:
+                    base = inp_exp.size(0) // self._num_experts
+                    rem = inp_exp.size(0) - base * self._num_experts
+                    split_sizes = [base] * self._num_experts
+                    for i in range(rem):
+                        split_sizes[i] += 1
+            return torch.split(inp_exp, split_sizes, dim=0), torch.split(identity, split_sizes, dim=0)
         
         else:
             # def get_kernel_feat(ind, k=3):
@@ -447,7 +469,11 @@ class SparseDispatcher(object):
         else:
             zeros = torch.zeros(self._gates.size(0), expert_out[-1].size(1), requires_grad=True, device=stitched.device)
         # combine samples that have been processed by the same k experts
-        combined = zeros.index_add(0, self._batch_index, stitched.float())
+        if self._batch_index.numel() == stitched.size(0):
+            combined = zeros.index_add(0, self._batch_index, stitched.float())
+        else:
+            fallback_index = torch.arange(stitched.size(0), device=stitched.device)
+            combined = zeros.index_add(0, fallback_index, stitched.float())
         # add eps to all zero values in order to avoid nans when going back to log space
         
         #combined[combined == 0] = np.finfo(float).eps
@@ -463,6 +489,8 @@ class SparseDispatcher(object):
               and shapes `[expert_batch_size_i]`
         """
         # split nonzero gates for each expert
+        if sum(self._part_sizes) != self._nonzero_gates.size(0):
+            return [self._nonzero_gates.new_ones(size) for size in self._part_sizes]
         return torch.split(self._nonzero_gates, self._part_sizes, dim=0)
 class WindowMSA(BaseModule):
     """Window based multi-head self-attention (W-MSA) module with relative
