@@ -186,6 +186,7 @@ def main():
         validate=(not args.no_validate),
         timestamp=timestamp,
         meta=meta)
+    print("train.py executed.")
 
 
 if __name__ == '__main__':
