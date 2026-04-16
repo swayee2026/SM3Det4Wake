@@ -66,10 +66,15 @@ class RotatedBaseDetector(BaseDetector):
                 segm_result = segm_result[0]
         else:
             bbox_result, segm_result = result, None
-        bbox_result = [
-            bbox.cpu().numpy() if isinstance(bbox, torch.Tensor) else bbox
-            for bbox in bbox_result
-        ]
+        if isinstance(bbox_result, np.ndarray):
+            bbox_result = [bbox_result]
+        elif isinstance(bbox_result, torch.Tensor):
+            bbox_result = [bbox_result.cpu().numpy()]
+        else:
+            bbox_result = [
+                bbox.cpu().numpy() if isinstance(bbox, torch.Tensor) else bbox
+                for bbox in bbox_result
+            ]
         bboxes = np.vstack(bbox_result)
         labels = [
             np.full(bbox.shape[0], i, dtype=np.int32)
