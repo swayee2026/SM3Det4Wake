@@ -862,8 +862,8 @@ class ShipWakeDualHead(nn.Module):
                 all_bboxes_with_scores = all_bboxes.new_zeros((0, 6))
 
             # Return format: (bbox_results, mask_results) for MMDetection compatibility
-            # mask_results is None as we don't do instance segmentation
-            combined_results.append((all_bboxes_with_scores, None))
+            # mask_results is [] (empty list) instead of None to avoid encode_mask_results crash
+            combined_results.append((all_bboxes_with_scores, []))
 
         return combined_results
 

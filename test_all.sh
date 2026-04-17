@@ -10,6 +10,9 @@ git stash
 
 git pull
 
+rm ./work_dirs/train/*
+rm ./work_dirs/test/test.pkl
+
 echo "=== 训练阶段开始 ==="
 
 python tools/train.py configs/ShipWake/ShipWake_convnext_t.py --work-dir ./work_dirs/train  --gpus 1 --seed 1

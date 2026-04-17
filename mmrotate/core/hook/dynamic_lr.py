@@ -117,17 +117,20 @@ class DynamicLrUpdaterHook(LrUpdaterHook):
                 loss = sum(loss)
             cur_losses['loss'].append(loss)
             cur_losses['name'].append(k)
-        cur_losses['loss'] = torch.tensor(cur_losses['loss']) 
+        cur_losses['loss'] = torch.tensor(cur_losses['loss'])
+        # Numerical safety: sanitize current losses to prevent divide-by-zero / inf / nan
+        cur_losses['loss'] = torch.nan_to_num(cur_losses['loss'], nan=1e-3, posinf=1e3, neginf=1e-3).clamp(min=1e-8)
         num_losses = len(cur_losses['loss']) 
         if self.history_ema_loss[0].steps < self.warmup_iters or self.extra_args['head_policy']=='None': # warmup ema
             batch_weight = torch.ones(num_losses)
         else:
-            history_loss = np.array([m.get() for m in self.history_ema_loss])
+            history_loss = np.array([max(m.get(), 1e-8) for m in self.history_ema_loss])
             if self.extra_args['head_policy']=='reverse':
-                w_i = cur_losses['loss']/torch.tensor(history_loss)
+                w_i = cur_losses['loss'] / (torch.tensor(history_loss) + 1e-8)
             else:
-                w_i = torch.tensor(history_loss)/cur_losses['loss']
-            batch_weight = num_losses*torch.nn.functional.softmax(w_i/self.T, dim=-1)
+                w_i = torch.tensor(history_loss) / (cur_losses['loss'] + 1e-8)
+            batch_weight = num_losses * torch.nn.functional.softmax(w_i / self.T, dim=-1)
+            batch_weight = torch.nan_to_num(batch_weight, nan=1.0)
             # if self.multi_tasks_reweight=='noisy_HDRS_loss':  
                 # noise =((num_losses-1)/num_losses + torch.nn.functional.softmax(torch.randn(w_i.size()))) 
                 # batch_weight = (num_losses*torch.nn.functional.softmax(w_i/self.T, dim=-1) + self.b)*noise
@@ -137,41 +140,47 @@ class DynamicLrUpdaterHook(LrUpdaterHook):
             for i, loss_name in enumerate(cur_losses['name']):
                 if self.reweight_losses[loss_name] == subnet:
                     lr_reweight.append(batch_weight[i])
-            lr_reweight = sum(lr_reweight)/len(lr_reweight)
-            subnet_lr_reweight[subnet] = lr_reweight 
+            lr_reweight = sum(lr_reweight) / max(len(lr_reweight), 1)
+            subnet_lr_reweight[subnet] = float(torch.nan_to_num(torch.tensor(lr_reweight), nan=1.0))
 
         new_lr = [self.get_lr(runner, _base_lr) for _base_lr in self.base_lr]
         if self.extra_args['backbone_policy']=='min':
             shared_lr_reweight = min(subnet_lr_reweight.values())
         elif self.extra_args['backbone_policy']=='avg':
-            shared_lr_reweight = sum(subnet_lr_reweight.values())/len(subnet_lr_reweight.values())
+            shared_lr_reweight = sum(subnet_lr_reweight.values()) / max(len(subnet_lr_reweight.values()), 1)
         elif self.extra_args['backbone_policy']=='max':
             shared_lr_reweight = max(subnet_lr_reweight.values())
         elif self.extra_args['backbone_policy']=='kl':
-            history_loss = torch.nn.functional.softmax(torch.tensor( np.array([m.get() for m in self.history_ema_loss])), dim=-1)
+            history_loss_vals = torch.tensor(np.array([max(m.get(), 1e-8) for m in self.history_ema_loss]))
+            history_loss = torch.nn.functional.softmax(history_loss_vals, dim=-1)
             cur_losses_ = torch.nn.functional.softmax(cur_losses['loss'], dim=-1)
             kl_div = F.kl_div(cur_losses_.log(), history_loss, reduction='batchmean')
-            shared_lr_reweight = 1+ (1 - kl_div)/sqrt(self.T)
+            shared_lr_reweight = 1.0 + (1.0 - float(kl_div)) / sqrt(self.T)
         elif self.extra_args['backbone_policy']=='sigmoid_kl':
-            history_loss = torch.nn.functional.softmax(torch.tensor( np.array([m.get() for m in self.history_ema_loss])), dim=-1)
+            history_loss_vals = torch.tensor(np.array([max(m.get(), 1e-8) for m in self.history_ema_loss]))
+            history_loss = torch.nn.functional.softmax(history_loss_vals, dim=-1)
             cur_losses_ = torch.nn.functional.softmax(cur_losses['loss'], dim=-1)
             kl_div = F.kl_div(cur_losses_.log(), history_loss, reduction='batchmean')
-            shared_lr_reweight = self.sigmoid((1-kl_div-self.b)* self.T)*2
+            shared_lr_reweight = float(self.sigmoid((1.0 - kl_div - self.b) * self.T) * 2)
         else:
-            shared_lr_reweight = torch.tensor(1.0)
+            shared_lr_reweight = 1.0
+
+        shared_lr_reweight = float(torch.nan_to_num(torch.tensor(shared_lr_reweight), nan=1.0))
 
         for i, loss in enumerate(cur_losses['loss']):
-            self.history_ema_loss[i].update(loss.item()) 
+            self.history_ema_loss[i].update(float(loss))
         # self.regular_lr = shared_lr_reweight
         for k,v in self.param_groups_param_names_mapping.items():
             is_shared = True
             for subnet, lr_reweight in subnet_lr_reweight.items():
                 if subnet in v:
-                    new_lr[k] = new_lr[k] *lr_reweight.item()
+                    new_lr[k] = new_lr[k] * lr_reweight
                     is_shared = False
                     break
             if is_shared:
-                new_lr[k] = new_lr[k] * shared_lr_reweight.item()
+                new_lr[k] = new_lr[k] * shared_lr_reweight
+        # Final guard: if any new_lr is nan/inf, fall back to base_lr
+        new_lr = [base_lr if not np.isfinite(lr) else lr for base_lr, lr in zip(self.base_lr, new_lr)]
         return new_lr
 
     def before_run(self, runner: 'runner.BaseRunner'):
@@ -213,7 +222,9 @@ class DynamicLrUpdaterHook(LrUpdaterHook):
                     elif isinstance(loss, list):
                         loss = sum(loss)
                     cur_losses['loss'].append(loss)
-                cur_losses['loss'] = torch.tensor(cur_losses['loss']) 
+                cur_losses['loss'] = torch.tensor(cur_losses['loss'])
+                # Sanitize losses before updating EMA to prevent history corruption
+                cur_losses['loss'] = torch.nan_to_num(cur_losses['loss'], nan=1e-3, posinf=1e3, neginf=1e-3).clamp(min=1e-8)
                 for i, loss in enumerate(cur_losses['loss']):
-                    self.history_ema_loss[i].update(loss.item()) 
+                    self.history_ema_loss[i].update(float(loss))
             self._set_lr(runner, warmup_lr)

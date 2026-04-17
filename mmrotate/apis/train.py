@@ -1,5 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 # Copied from mmdet, only modified `get_root_logger`.
+import numpy as np
 import torch
 from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
 from mmcv.runner import (DistSamplerSeedHook, EpochBasedRunner,
@@ -13,20 +14,45 @@ from mmrotate.datasets import build_dataloader
 
 
 class SafeOptimizerHook(OptimizerHook):
-    """Optimizer hook that skips update when gradients contain nan/inf."""
+    """Optimizer hook that skips update when gradients or lr contain nan/inf."""
 
     def after_train_iter(self, runner):
+        # Check if learning rate has been corrupted (e.g., by DSO divide-by-zero)
+        lr_corrupted = False
+        for i, group in enumerate(runner.optimizer.param_groups):
+            if not np.isfinite(group['lr']):
+                runner.logger.warning(
+                    'Iteration %d: detected non-finite lr in param_group %d (lr=%s). '
+                    'Resetting to initial lr.',
+                    runner.iter, i, str(group['lr']))
+                group['lr'] = group.get('initial_lr', 1e-4)
+                lr_corrupted = True
+        if lr_corrupted:
+            runner.logger.warning('LR corruption fixed. Continuing training.')
+
         invalid_names = []
+        param_corrupted = False
         for name, param in runner.model.named_parameters():
             if param.grad is not None:
                 if not torch.isfinite(param.grad).all():
                     invalid_names.append(name)
+            if param.data is not None and not torch.isfinite(param.data).all():
+                param_corrupted = True
         if invalid_names:
             runner.logger.warning(
                 'Iteration %d: detected nan/inf in gradients of %d params: %s ...',
                 runner.iter, len(invalid_names), ', '.join(invalid_names[:3]))
             # Zero out invalid gradients to prevent contamination
             runner.optimizer.zero_grad()
+            if param_corrupted:
+                runner.logger.error(
+                    'CRITICAL: Model parameters already contain nan/inf. '
+                    'You MUST delete work_dirs and restart training from scratch.')
+            return
+        if param_corrupted:
+            runner.logger.error(
+                'CRITICAL: Model parameters contain nan/inf but gradients are clean. '
+                'This should not happen. Please restart from scratch.')
             return
         super().after_train_iter(runner)
 
