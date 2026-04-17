@@ -98,6 +98,7 @@ class CosineTopKGate(torch.nn.Module):
                               F.normalize(sim_matrix, dim=0))
         logit_scale = torch.clamp(self.temperature, max=self.clamp_max).exp()
         logits = logits * logit_scale
+        logits = torch.clamp(logits, min=-80.0, max=80.0)
         return logits
 class MoE_layer(nn.Module):
 
@@ -277,19 +278,17 @@ class MoE_layer(nn.Module):
         elif self.gating == 'cosine':
             clean_logits = self.w_gate(x)
 
+        # Sanitize clean logits before adding noise
+        clean_logits = torch.nan_to_num(clean_logits, nan=0.0, posinf=80.0, neginf=-80.0)
         if self.noisy_gating and train:
             raw_noise_stddev = x @ self.w_noise
             noise_stddev = ((self.softplus(raw_noise_stddev) + noise_epsilon) * train)
             noise_stddev = noise_stddev.clamp(max=10.0)
             noisy_logits = clean_logits + ( torch.randn_like(clean_logits) * noise_stddev)
+            noisy_logits = torch.nan_to_num(noisy_logits, nan=0.0, posinf=80.0, neginf=-80.0)
             logits = noisy_logits
         else:
             logits = clean_logits
-
-        # Sanitize to prevent inf/nan from breaking softmax and gates
-        clean_logits = torch.nan_to_num(clean_logits, nan=0.0, posinf=80.0, neginf=-80.0)
-        if self.noisy_gating and train:
-            noisy_logits = torch.nan_to_num(noisy_logits, nan=0.0, posinf=80.0, neginf=-80.0)
         logits = torch.nan_to_num(logits, nan=0.0, posinf=80.0, neginf=-80.0)
 
         top_logits, top_indices = logits.topk(min(self.k + 1, self.num_experts), dim= -1)  
@@ -343,7 +342,7 @@ class MoE_layer(nn.Module):
         # calculate loss
         loss = self.cv_squared(importance) + self.cv_squared(load)
         loss *= loss_coef
-        loss = torch.nan_to_num(loss, nan=0.0, posinf=0.0, neginf=0.0)
+        loss = torch.nan_to_num(loss, nan=0.0, posinf=0.0, neginf=0.0).detach()
 
         dispatcher = SparseDispatcher(self.num_experts, gates, self.squads ) 
         expert_inputs,identity = dispatcher.dispatch(x,identity, shape=[x_shape[0], *hwshape, x_shape[-1]]) 

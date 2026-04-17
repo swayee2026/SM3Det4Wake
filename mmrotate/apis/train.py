@@ -16,16 +16,15 @@ class SafeOptimizerHook(OptimizerHook):
     """Optimizer hook that skips update when gradients contain nan/inf."""
 
     def after_train_iter(self, runner):
-        has_invalid = False
+        invalid_names = []
         for name, param in runner.model.named_parameters():
             if param.grad is not None:
                 if not torch.isfinite(param.grad).all():
-                    has_invalid = True
-                    break
-        if has_invalid:
+                    invalid_names.append(name)
+        if invalid_names:
             runner.logger.warning(
-                'Iteration %d: detected nan/inf in gradients, skipping optimizer step.',
-                runner.iter)
+                'Iteration %d: detected nan/inf in gradients of %d params: %s ...',
+                runner.iter, len(invalid_names), ', '.join(invalid_names[:3]))
             # Zero out invalid gradients to prevent contamination
             runner.optimizer.zero_grad()
             return

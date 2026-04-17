@@ -75,6 +75,7 @@ class CosineTopKGate(torch.nn.Module):
                               F.normalize(sim_matrix, dim=0))
         logit_scale = torch.clamp(self.temperature, max=self.clamp_max).exp()#限制上界
         logits = logits * logit_scale
+        logits = torch.clamp(logits, min=-80.0, max=80.0)
         return logits
         
 class MoE_layer(nn.Module):
@@ -225,7 +226,7 @@ class MoE_layer(nn.Module):
         # calculate loss
         loss = self.cv_squared(importance) + self.cv_squared(load)
         loss *= loss_coef
-        loss = torch.nan_to_num(loss, nan=0.0, posinf=0.0, neginf=0.0)
+        loss = torch.nan_to_num(loss, nan=0.0, posinf=0.0, neginf=0.0).detach()
 
         dispatcher = SparseDispatcher(self.num_experts, gates)
         
