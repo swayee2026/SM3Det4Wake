@@ -12,6 +12,26 @@ from mmrotate.utils import compat_cfg, find_latest_checkpoint, get_root_logger
 from mmrotate.datasets import build_dataloader
 
 
+class SafeOptimizerHook(OptimizerHook):
+    """Optimizer hook that skips update when gradients contain nan/inf."""
+
+    def after_train_iter(self, runner):
+        has_invalid = False
+        for name, param in runner.model.named_parameters():
+            if param.grad is not None:
+                if not torch.isfinite(param.grad).all():
+                    has_invalid = True
+                    break
+        if has_invalid:
+            runner.logger.warning(
+                'Iteration %d: detected nan/inf in gradients, skipping optimizer step.',
+                runner.iter)
+            # Zero out invalid gradients to prevent contamination
+            runner.optimizer.zero_grad()
+            return
+        super().after_train_iter(runner)
+
+
 def train_detector(model,
                    dataset,
                    cfg,
@@ -91,9 +111,12 @@ def train_detector(model,
         optimizer_config = Fp16OptimizerHook(
             **cfg.optimizer_config, **fp16_cfg, distributed=distributed)
     elif distributed and 'type' not in cfg.optimizer_config:
-        optimizer_config = OptimizerHook(**cfg.optimizer_config)
+        optimizer_config = SafeOptimizerHook(**cfg.optimizer_config)
     else:
-        optimizer_config = cfg.optimizer_config
+        if 'type' not in cfg.optimizer_config:
+            optimizer_config = SafeOptimizerHook(**cfg.optimizer_config)
+        else:
+            optimizer_config = cfg.optimizer_config
 
     # register hooks
     runner.register_training_hooks(

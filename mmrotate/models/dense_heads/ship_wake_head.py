@@ -529,7 +529,7 @@ class ShipPointHead(nn.Module):
             loss_center = flatten_center_preds.sum() * 0
             loss_direction = flatten_direction_preds.sum() * 0
 
-        return {
+        losses = {
             "loss_center": loss_center,
             "loss_direction": loss_direction,
             "loss_conf": loss_conf,
@@ -537,6 +537,11 @@ class ShipPointHead(nn.Module):
                 num_pos, dtype=torch.float
             ),  # Convert to tensor for logging
         }
+        # Sanitize to prevent nan from corrupting model weights
+        for k, v in losses.items():
+            if isinstance(v, torch.Tensor) and not torch.isfinite(v).all():
+                losses[k] = v.new_tensor(0.0)
+        return losses
 
     def get_points_predictions(
         self,
@@ -729,6 +734,19 @@ class ShipWakeDualHead(nn.Module):
         img_metas = unwrap(img_metas)
         gt_bboxes_ignore = unwrap(gt_bboxes_ignore)
 
+        # Sanitize GT data: replace nan/inf with safe defaults
+        def sanitize_gt(t, fallback=0.0):
+            if isinstance(t, torch.Tensor):
+                return torch.nan_to_num(t, nan=fallback, posinf=fallback, neginf=fallback)
+            return t
+
+        gt_bboxes = {k: [sanitize_gt(x) for x in v] if isinstance(v, list) else sanitize_gt(v)
+                     for k, v in gt_bboxes.items()}
+        gt_labels = {k: [sanitize_gt(x) for x in v] if isinstance(v, list) else sanitize_gt(v)
+                     for k, v in gt_labels.items()}
+        if gt_bboxes_ignore is not None:
+            gt_bboxes_ignore = [sanitize_gt(x) for x in gt_bboxes_ignore] if isinstance(gt_bboxes_ignore, list) else sanitize_gt(gt_bboxes_ignore)
+
         # Wake OBB losses
         wake_losses = self.wake_head.loss(
             predictions["wake_cls_scores"],
@@ -756,6 +774,11 @@ class ShipWakeDualHead(nn.Module):
 
         for k, v in ship_losses.items():
             losses[f"ship_{k}"] = v
+
+        # Final defense: if any loss is nan/inf, replace with 0 to prevent model corruption
+        for k, v in losses.items():
+            if isinstance(v, torch.Tensor) and not torch.isfinite(v).all():
+                losses[k] = v.new_tensor(0.0)
 
         return losses
 

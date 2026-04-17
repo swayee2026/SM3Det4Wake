@@ -527,7 +527,14 @@ class RotatedAnchorHead(BaseDenseHead):
             bbox_targets_list,
             bbox_weights_list,
             num_total_samples=num_total_samples)
-        return dict(loss_cls=losses_cls, loss_bbox=losses_bbox)
+        losses = dict(loss_cls=losses_cls, loss_bbox=losses_bbox)
+        # Sanitize losses to prevent nan from propagating to the whole model
+        for k, v in losses.items():
+            if isinstance(v, (list, tuple)):
+                losses[k] = [torch.nan_to_num(vi, nan=0.0, posinf=0.0, neginf=0.0) for vi in v]
+            elif isinstance(v, torch.Tensor):
+                losses[k] = torch.nan_to_num(v, nan=0.0, posinf=0.0, neginf=0.0)
+        return losses
 
     @force_fp32(apply_to=('cls_scores', 'bbox_preds'))
     def get_bboxes(self,

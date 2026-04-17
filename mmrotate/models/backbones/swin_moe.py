@@ -287,10 +287,10 @@ class MoE_layer(nn.Module):
             logits = clean_logits
 
         # Sanitize to prevent inf/nan from breaking softmax and gates
-        clean_logits = torch.nan_to_num(clean_logits, nan=0.0, posinf=1e4, neginf=-1e4)
+        clean_logits = torch.nan_to_num(clean_logits, nan=0.0, posinf=80.0, neginf=-80.0)
         if self.noisy_gating and train:
-            noisy_logits = torch.nan_to_num(noisy_logits, nan=0.0, posinf=1e4, neginf=-1e4)
-        logits = torch.nan_to_num(logits, nan=0.0, posinf=1e4, neginf=-1e4)
+            noisy_logits = torch.nan_to_num(noisy_logits, nan=0.0, posinf=80.0, neginf=-80.0)
+        logits = torch.nan_to_num(logits, nan=0.0, posinf=80.0, neginf=-80.0)
 
         top_logits, top_indices = logits.topk(min(self.k + 1, self.num_experts), dim= -1)  
         
@@ -298,6 +298,7 @@ class MoE_layer(nn.Module):
         top_k_indices = top_indices[:, :self.k] if len(top_indices.shape) == 2 else top_indices[:, :, :self.k]
         
         top_k_gates = self.softmax(top_k_logits)
+        top_k_gates = torch.nan_to_num(top_k_gates, nan=1.0 / self.k)
 
         zeros = torch.zeros_like(logits, requires_grad=True)
        
@@ -342,6 +343,7 @@ class MoE_layer(nn.Module):
         # calculate loss
         loss = self.cv_squared(importance) + self.cv_squared(load)
         loss *= loss_coef
+        loss = torch.nan_to_num(loss, nan=0.0, posinf=0.0, neginf=0.0)
 
         dispatcher = SparseDispatcher(self.num_experts, gates, self.squads ) 
         expert_inputs,identity = dispatcher.dispatch(x,identity, shape=[x_shape[0], *hwshape, x_shape[-1]]) 
